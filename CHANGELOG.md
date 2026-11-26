@@ -1,5 +1,17 @@
 # Changelog
 
+### 0.3.0 — 2026-11-26 — Workshop controls, notes & playback
+- Choices are now buttons; numbers use round knobs with a vertical jog wheel beside them (also in Magic Transform)
+- Level and Length are always visible under each layer head; the other volume settings stay collapsible
+- Each layer shows its wave with a playhead; tap it to switch between "layer only" and "in the mix"
+- Mix wave with a positionable playhead, play/pause, stop and a pin to keep it at the top
+- Layer ▶ turns into ■ while playing
+- Autoplay with three modes (Off / Layer / Mix), default Off, switchable in the Workshop
+- Pick your own notes for Notes layers: piano keyboard, 6-string fretboard or text (note names, octaves and chord names, incl. German H/Fis/Es)
+- Create tab: "New sound" starts with a single sine layer, "Edit in Workshop" opens the selected preset
+- Fixed: knob values were drawn above the sticky Workshop buttons
+- Fixed: knobs with negative values (e.g. Pan) showed a wrong, half-filled ring
+
 ### 0.2.0 — 2026-11-26 — Sound Workshop
 - New full-screen Sound Workshop with its own undo/redo: every sound is built from 1–4 layers with identical sections (Source, Pitch, Volume, Brightness, Movement, Character)
 - Sources: Sine, Triangle, Saw, Square, Noise (bright/medium/dark) and Notes with six synthesized instruments (E-piano, Bell, Pluck, Organ, Pad, Chip), four play modes and seven moods

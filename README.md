@@ -10,23 +10,28 @@ Listen is a browser app for making cinematic sound effects fast, without digging
 
 ### Create — presets
 - **Themes**: Standard, Sci-Fi, Fantasy, RPG, Horror and Retro (8-Bit), each with 8 fitting sounds, e.g. Sci-Fi → *Laser shot, Shield up, Generator shutdown, Teleport, Spaceship fly-by*.
-- Preview a sound, make a quick **🎲 Vary** version, add it to the track, or open it in the **Sound Workshop** to see exactly how it is built.
+- Preview a sound, make a quick **🎲 Vary** version, or add it to the track.
+- **Edit in Workshop** opens the selected preset in the Sound Workshop, and **New sound** starts there from a single sine wave.
 
 ### Sound Workshop
 - A full-screen editor for building sounds step by step, with its **own undo/redo**.
 - Every sound is made of **1–4 layers** that play together. Every layer has the **same sections with the same controls**, so a sound can always be understood and rebuilt:
   - **Source**: the raw material, either Sine, Triangle, Saw, Square, **Noise** (bright, medium, dark) or **Notes**. Notes come with an instrument (E-piano, Bell, Pluck, Organ, Pad, Chip), a play mode (single note, chord, arpeggio, random notes) and a mood (Major, Minor, Pentatonic, Dreamy, Mysterious, Dark, Power).
-  - **Pitch**: start pitch → end pitch with a curve (for Notes: root note and glide)
-  - **Volume**: level, start time, fade in, length, fade out
+  - **Pitch**: start pitch → end pitch with a curve (for Notes: root note and glide, plus your own notes, see below)
+  - **Volume**: **Level** and **Length** sit directly under every layer head and are always reachable; start time, fade in and fade out are in the collapsible Volume section
   - **Brightness**: low-, high- or band-pass filter, start → end with a curve, resonance
   - **Movement**: vibrato, pulse, pan start → pan end, stereo width
   - **Character**: drive and bit depth
 - Source and Pitch are open by default; the other sections are collapsed and show a one-line summary.
+- **Controls**: choices (Source, Noise color, Instrument, Play, Mood, Filter …) are buttons. Numbers are round knobs: tap one, then swipe the **vertical jog wheel** next to them up or down. A dot on the wheel marks the default value, and a short note explains what the setting does. Double-tap a knob to reset it.
+- **Mix**: the wave of the whole sound with a playhead. Tap or drag on it to set the position. ▶/❚❚ plays and pauses, ■ stops and returns to the start. 📌 pins the mix at the top while you scroll.
+- **Layer waves**: every layer shows its own wave with a playhead while playing. Tap the wave to switch between *layer only* (its own length) and *in the mix* (its position within the whole sound).
+- **Autoplay** (Off / Layer / Mix, default Off) decides what plays after a change. *Layer* plays the changed layer, *Mix* plays the whole sound.
+- **Pick your own notes** for Notes layers: tap keys on a two-octave **piano keyboard** (octave buttons ◀ ▶), tap a **6-string fretboard** (frets 0–12, standard tuning), or type note names and chords (`C E G`, `A3`, `Am`, `G7`, `Fmaj7`, `Dsus4`; German `H`, `Fis`, `Es` also work). Picked notes replace the automatic root note and chord. *Single* plays the first note, *Chord* plays all of them, *Arpeggio* plays them in the order you picked, *Random* picks among them. Each tapped note is previewed with the layer's instrument.
 - Example: *Big explosion* = bright noise getting darker (the blast) + a sine dropping from 150 to 45 Hz (the punch) + dark noise fading in (the rumble).
-- ▶ on a layer plays only that layer; switching layers off lets you hear what each one adds. Layers can be duplicated and removed.
+- ▶ on a layer plays only that layer and turns into ■ to stop it. Switching layers off lets you hear what each one adds. Layers can be duplicated and removed.
 - **Variants**: copy the sound as variant B, C … change it and tap the letters to compare.
-- **Infinity dials**: every setting is a round button that shows its value. Tap one, then swipe the tick ruler below it (like a phone photo editor). A short note explains what the setting does. Double-tap a button to reset it.
-- Start from any preset or from an empty layer. **Add to track**, or **Update clip** when the Workshop was opened from a clip (*Edit in Workshop*).
+- Start from any preset or from a simple sine layer. **Add to track**, or **Update clip** when the Workshop was opened from a clip (*Edit in Workshop*).
 
 ### My Sounds
 - A library shared by **all projects**: save sounds from the Workshop or any clip (*Save to My Sounds*, effect chain and trim included).

@@ -5,7 +5,7 @@
    export. Everything runs client-side; no network requests.
    ===================================================================== */
 
-const APP_VERSION = '0.2.0';
+const APP_VERSION = '0.3.0';
 const SR = 48000;
 const $ = (id) => document.getElementById(id);
 
@@ -546,7 +546,7 @@ const HARM_SCALE = [[0, 2, 4, 5, 7, 9, 11], [0, 2, 3, 5, 7, 8, 10], [0, 2, 4, 7,
 const MAX_LAYERS = 4;
 
 function layerDefaults(type = T_SINE) {
-  return { on: true, type, color: 1, inst: 0, mode: 0, harmony: 0, density: 8, range: 12,
+  return { on: true, type, color: 1, inst: 0, mode: 0, harmony: 0, density: 8, range: 12, notes: [],
     f0: 440, f1: 440, pcurve: 0, note: 60, glide: 0,
     level: 80, delay: 0, attack: 0.005, dur: 1, decay: 50,
     ftype: 0, b0: 16000, b1: 16000, bcurve: 0, reso: 10,
@@ -568,19 +568,17 @@ const SECTIONS = [
     return d; } },
   { id: 'pitch', name: 'Pitch', open: true, defs: (L) => {
     if (L.type === T_NOISE) return [];
-    if (L.type === T_NOTES) return [
-      { k: 'note', n: 'Root note', min: 24, max: 96, d: 60, u: 'note', tip: 'The base note — C4 is middle C. Low = big and dark, high = tiny and bright' },
-      { k: 'glide', n: 'Glide', min: -24, max: 24, d: 0, u: 'st', tip: 'Bends everything up or down over the length — rising magic, falling defeat' }];
+    if (L.type === T_NOTES) return (L.notes && L.notes.length ? [] : [
+      { k: 'note', n: 'Root note', min: 24, max: 96, d: 60, u: 'note', tip: 'The base note when no notes are picked below — C4 is middle C' }]).concat([
+      { k: 'glide', n: 'Glide', min: -24, max: 24, d: 0, u: 'st', tip: 'Bends everything up or down over the length — rising magic, falling defeat' }]);
     return [
       { k: 'f0', n: 'Start pitch', min: 20, max: 8000, log: true, d: 440, u: 'Hz', tip: 'Pitch at the beginning. ~50 Hz = deep rumble, ~440 Hz = middle, ~3000 Hz = piercing' },
       { k: 'f1', n: 'End pitch', min: 20, max: 8000, log: true, d: 440, u: 'Hz', tip: 'Pitch at the end. Lower than start = falling (laser, power down) · higher = rising (riser, power up)' },
       { k: 'pcurve', n: 'Pitch curve', min: -100, max: 100, d: 0, tip: 'Negative = changes fast at first (punchy drops) · positive = slow start, fast finish (risers)' }];
   } },
   { id: 'volume', name: 'Volume', open: false, defs: () => [
-    { k: 'level', n: 'Level', min: 0, max: 100, d: 80, u: '%', tip: 'Loudness of this layer compared to the others' },
     { k: 'delay', n: 'Start at', min: 0, max: 10, d: 0, u: 's', tip: 'When this layer starts — e.g. a boom after a whoosh' },
     { k: 'attack', n: 'Fade in', min: 0, max: 10, d: 0.005, u: 's', tip: 'Short = hard hit · long = swelling, creeping in' },
-    { k: 'dur', n: 'Length', min: 0.03, max: 16, d: 1, u: 's', tip: 'How long this layer lasts' },
     { k: 'decay', n: 'Fade out', min: 0, max: 100, d: 50, u: '%', tip: '0 = stays loud until the end · high = dies away quickly, like a hit or pluck' }] },
   { id: 'bright', name: 'Brightness', open: false, defs: () => [
     { k: 'ftype', n: 'Filter', opts: ['Low-pass', 'High-pass', 'Band-pass'], d: 0, tip: 'Low-pass = removes highs (muffled) · High-pass = removes lows (thin) · Band-pass = keeps a narrow band (whistling wind, radio)' },
@@ -601,6 +599,10 @@ const SECTIONS = [
     { k: 'crush', n: 'Bits', min: 2, max: 16, d: 16, int: true, tip: '16 = clean · lower = crunchy retro console sound' }] },
 ];
 
+// Always visible under each layer head
+const QUICK_DEFS = [
+  { k: 'level', n: 'Level', min: 0, max: 100, d: 80, u: '%', tip: 'Loudness of this layer compared to the others' },
+  { k: 'dur', n: 'Length', min: 0.03, max: 16, d: 1, u: 's', tip: 'How long this layer lasts' }];
 const shapeU = (u, curve) => Math.pow(u, Math.pow(2, curve / 40));
 
 /* ---------- Instruments for the "Notes" source ---------- */
@@ -687,8 +689,12 @@ function renderNotes(P, dstL, dstR, rnd, vibFn) {
     const [gl, gr] = panGains(pan);
     renderNote(P.inst, mtof(midi), Math.round(len * SR), Math.round(start * SR), dstL, dstR, gl, gr, amp, pm, rnd);
   };
-  if (P.mode === 0) play(P.note, 0, dur, 0.7, 0);
-  else if (P.mode === 1) chord.forEach((iv, k) => play(P.note + iv, 0, dur, 0.7 / Math.sqrt(chord.length), (k / Math.max(1, chord.length - 1) * 2 - 1) * 0.6 * w));
+  const own = P.notes && P.notes.length ? P.notes : null; // notes picked by the user (absolute MIDI numbers)
+  if (P.mode === 0) play(own ? own[0] : P.note, 0, dur, 0.7, 0);
+  else if (P.mode === 1) {
+    const ns = own || chord.map((iv) => P.note + iv);
+    ns.forEach((m, k) => play(m, 0, dur, 0.7 / Math.sqrt(ns.length), (k / Math.max(1, ns.length - 1) * 2 - 1) * 0.6 * w));
+  }
   else {
     const step = 1 / P.density, tail = NOTE_TAIL[P.inst] || step * 1.2;
     let t = 0, k = 0;
@@ -700,7 +706,8 @@ function renderNotes(P, dstL, dstR, rnd, vibFn) {
     }
     while (t < dur - 0.01) {
       let midi;
-      if (P.mode === 2) midi = P.note + notes[k % notes.length];
+      if (own) midi = P.mode === 2 ? own[k % own.length] : own[Math.floor(rnd() * own.length)];
+      else if (P.mode === 2) midi = P.note + notes[k % notes.length];
       else {
         const raw = P.note + (rnd() - 0.5) * span, oct = Math.floor(raw / 12), pc = raw - oct * 12;
         let best = scale[0], bd = 99; for (const s of scale.concat([12])) { const d = Math.abs(s - pc); if (d < bd) { bd = d; best = s; } }
@@ -786,7 +793,7 @@ function renderDesign(layers, seed, onlyIdx = -1) {
   return fadeEdges(normalizeBuf(trimTailSilence(b, 0.00002), 0.85), 0.0005, 0.005);
 }
 function layerSummary(L) {
-  if (L.type === T_NOTES) return INSTRUMENTS[L.inst] + ' · ' + ['single note', 'chord', 'arpeggio', 'random notes'][L.mode];
+  if (L.type === T_NOTES) return INSTRUMENTS[L.inst] + ' · ' + ['single note', 'chord', 'arpeggio', 'random notes'][L.mode] + (L.notes && L.notes.length ? ' · ' + L.notes.map(midiName).join(' ') : '');
   if (L.type === T_NOISE) return ['Bright', 'Medium', 'Dark'][L.color] + ' noise';
   const f = (v) => fmtVal({ u: 'Hz' }, v) + ' Hz';
   return SRC_TYPES[L.type] + ' ' + (Math.abs(L.f0 - L.f1) < 1 ? f(L.f0) : f(L.f0) + ' → ' + f(L.f1));
@@ -903,6 +910,23 @@ const THEMES = [
     ['Game over', [Ly(T_SQR, { f0: 440, f1: 110, dur: 1.6, decay: 10, vib: 40, vrate: 8, crush: 6, level: 70 })]],
   ] },
 ].map((t) => ({ ...t, presets: t.presets.map(([name, layers]) => ({ name, layers })) }));
+
+/* ---------- Note names & chord parsing ("C E G", "A3", "Am", "G7", "Fmaj7", "Dsus4"; H = B) ---------- */
+const midiName = (m) => NOTE_NAMES[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
+const CHORD_TYPES = { maj: [0, 4, 7], M: [0, 4, 7], m: [0, 3, 7], min: [0, 3, 7], 7: [0, 4, 7, 10], maj7: [0, 4, 7, 11], m7: [0, 3, 7, 10],
+  sus2: [0, 2, 7], sus4: [0, 5, 7], sus: [0, 5, 7], dim: [0, 3, 6], aug: [0, 4, 8], 6: [0, 4, 7, 9], 9: [0, 4, 7, 10, 14], add9: [0, 4, 7, 14], m6: [0, 3, 7, 9] };
+function parseNotes(text) {
+  const out = [], bad = [];
+  const PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11, H: 11 };
+  for (const tok of text.split(/[\s,;]+/).filter(Boolean)) {
+    const m = tok.match(/^([A-Ha-h])(#|b|is|es)?(maj7|maj|min|m7|m6|m|M|7|6|9|add9|sus2|sus4|sus|dim|aug)?(-?\d)?$/);
+    if (!m || (m[1].toUpperCase() !== 'H' && !(m[1].toUpperCase() in PC))) { bad.push(tok); continue; }
+    let pc = PC[m[1].toUpperCase()] + (m[2] === '#' || m[2] === 'is' ? 1 : m[2] === 'b' || m[2] === 'es' ? -1 : 0);
+    const oct = m[4] != null ? +m[4] : 4, root = (oct + 1) * 12 + pc;
+    if (m[3]) CHORD_TYPES[m[3]].forEach((iv) => out.push(root + iv)); else out.push(root);
+  }
+  return { notes: out.filter((n) => n >= 12 && n <= 120).slice(0, 16), bad };
+}
 
 /* =====================================================================
    Effects (Magic Transform chain). Each effect takes a buffer and
@@ -1169,23 +1193,46 @@ async function applyChain(src, chain) {
 }
 
 /* =====================================================================
-   Infinity dial: a row of round value buttons + one draggable tick ruler
-   (inspired by phone photo editors). Swipe the ruler to change the
-   active value; double-tap a button to reset it.
+   Controls: choice buttons for options, round value knobs for numbers
+   and a vertical jog wheel (tick scale) on the right. Tap a knob, then
+   swipe the wheel up/down. Double-tap a knob to reset it.
    ===================================================================== */
 class Dials {
   constructor(container, defs, values, opts = {}) {
     this.c = container; this.defs = defs; this.values = values; this.opts = opts;
     this.defaults = opts.defaults || defaultsOf(defs);
-    this.active = defs[0] ? defs[0].k : null;
+    this.nums = defs.filter((d) => !d.opts); this.choices = defs.filter((d) => d.opts);
+    this.active = this.nums[0] ? this.nums[0].k : null;
     this.render();
   }
   render() {
     this.c.innerHTML = '';
     if (!this.defs.length) { this.c.innerHTML = '<p class="hint">No settings — this effect just does its thing.</p>'; return; }
+    this.choiceEls = {};
+    this.choices.forEach((d) => {
+      const row = document.createElement('div'); row.className = 'choice-row';
+      row.innerHTML = '<div class="choice-label"></div><div class="choices"></div><div class="choice-tip"></div>';
+      row.querySelector('.choice-label').textContent = d.n;
+      row.querySelector('.choice-tip').textContent = d.tip || '';
+      const box = row.querySelector('.choices');
+      d.opts.forEach((o, i) => {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'choice'; b.textContent = o;
+        b.addEventListener('click', () => {
+          if (this.values[d.k] === i) return;
+          this.values[d.k] = i; this.updateChoices();
+          this.opts.onInput && this.opts.onInput(d.k); this.opts.onCommit && this.opts.onCommit(d.k);
+        });
+        box.appendChild(b);
+      });
+      this.choiceEls[d.k] = box; this.c.appendChild(row);
+    });
+    this.updateChoices();
+    if (!this.nums.length) return;
+    const wrap = document.createElement('div'); wrap.className = 'dial-wrap' + (this.opts.compact ? ' compact' : '');
+    const left = document.createElement('div'); left.className = 'dial-left';
     const row = document.createElement('div'); row.className = 'dial-row';
     this.btns = {};
-    this.defs.forEach((d) => {
+    this.nums.forEach((d) => {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'dial';
       b.innerHTML = '<div class="knob"><span></span></div><div class="lbl"></div>';
       b.querySelector('.lbl').textContent = d.n;
@@ -1201,67 +1248,78 @@ class Dials {
       row.appendChild(b); this.btns[d.k] = b;
     });
     this.name = document.createElement('div'); this.name.className = 'dial-name';
-    this.canvas = document.createElement('canvas'); this.canvas.className = 'ruler';
     this.tip = document.createElement('div'); this.tip.className = 'dial-tip';
-    this.c.append(row, this.name, this.canvas, this.tip);
-    this.bindRuler();
+    left.append(row, this.name, this.tip);
+    this.canvas = document.createElement('canvas'); this.canvas.className = 'wheel';
+    this.canvas.title = 'Swipe up or down';
+    wrap.append(left, this.canvas);
+    this.c.appendChild(wrap);
+    this.bindWheel();
+    if (window.ResizeObserver) new ResizeObserver(() => this.draw()).observe(this.canvas);
     this.setActive(this.active);
   }
   def(k) { return this.defs.find((d) => d.k === k); }
+  updateChoices() {
+    this.choices.forEach((d) => [...this.choiceEls[d.k].children].forEach((b, i) => b.classList.toggle('active', i === this.values[d.k])));
+  }
   setActive(k) {
+    if (!this.btns) return;
     this.active = k;
     Object.entries(this.btns).forEach(([kk, b]) => b.classList.toggle('active', kk === k));
     const d = this.def(k);
-    this.name.textContent = d.n;
-    this.tip.textContent = d.tip || '';
+    this.name.textContent = d.n + ' · ' + fmtVal(d, this.values[d.k] ?? d.d) + (unitLabel(d) ? ' ' + unitLabel(d) : '');
+    this.tip.textContent = this.opts.compact ? '' : d.tip || '';
     this.update();
   }
   update() {
-    this.defs.forEach((d) => {
+    this.updateChoices();
+    if (!this.btns) return;
+    this.nums.forEach((d) => {
       const b = this.btns[d.k], v = this.values[d.k] ?? d.d, n = toN(d, v);
       b.querySelector('span').textContent = fmtVal(d, v);
       let a0 = 0, a1 = n * 360;
-      if (!d.opts && d.min < 0 && d.max > 0) { const z = toN(d, 0); a0 = Math.min(z, n) * 360; a1 = Math.max(z, n) * 360; }
-      b.querySelector('.knob').style.setProperty('--a0', a0 + 'deg');
-      b.querySelector('.knob').style.setProperty('--a1', a1 + 'deg');
+      if (d.min < 0 && d.max > 0) { const z = toN(d, 0); a0 = Math.min(z, n) * 360; a1 = Math.max(z, n) * 360; }
+      const kn = b.querySelector('.knob'); kn.style.setProperty('--a0', a0 + 'deg'); kn.style.setProperty('--a1', a1 + 'deg');
     });
+    const d = this.def(this.active);
+    if (d) this.name.textContent = d.n + ' · ' + fmtVal(d, this.values[d.k] ?? d.d) + (unitLabel(d) ? ' ' + unitLabel(d) : '');
     this.draw();
   }
   draw() {
-    const cv = this.canvas, dpr = window.devicePixelRatio || 1, W = cv.clientWidth || 300, H = 46;
+    const cv = this.canvas; if (!cv) return;
+    const dpr = window.devicePixelRatio || 1, W = cv.clientWidth || 56, H = cv.clientHeight || 140;
     if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
     const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
     const d = this.def(this.active); if (!d) return;
     const cs = getComputedStyle(document.documentElement);
     const col = cs.getPropertyValue('--text-secondary').trim(), acc = cs.getPropertyValue('--accent').trim();
-    const n = toN(d, this.values[d.k] ?? d.d), S = this.scale(d), cx = W / 2;
-    const steps = d.opts ? d.opts.length - 1 : 50;
-    for (let i = 0; i <= steps; i++) {
-      const tn = i / steps, x = cx + (tn - n) * S;
-      if (x < -2 || x > W + 2) continue;
-      const major = d.opts || i % 5 === 0;
-      g.fillStyle = col; g.globalAlpha = Math.max(0.25, 1 - Math.abs(x - cx) / (W / 2)) * (major ? 1 : 0.7);
-      g.fillRect(Math.round(x) - 0.5, d.opts ? 12 : major ? 14 : 18, 1.5, d.opts ? 18 : major ? 18 : 10);
-      if (d.opts) { g.font = '11px sans-serif'; g.textAlign = 'center'; g.fillText(d.opts[i], x, 45); }
+    const n = toN(d, this.values[d.k] ?? d.d), S = this.scale(), cy = H / 2;
+    for (let i = 0; i <= 50; i++) {
+      const tn = i / 50, y = cy - (tn - n) * S; // higher values sit above
+      if (y < -2 || y > H + 2) continue;
+      const major = i % 5 === 0;
+      g.fillStyle = col; g.globalAlpha = Math.max(0.2, 1 - Math.abs(y - cy) / (H / 2)) * (major ? 1 : 0.7);
+      const len = major ? W * 0.55 : W * 0.32;
+      g.fillRect((W - len) / 2, Math.round(y) - 0.5, len, 1.5);
     }
     g.globalAlpha = 1;
-    const dn = toN(d, this.defaults[d.k] ?? d.d), dx = cx + (dn - n) * S;
-    if (dx > 0 && dx < W) { g.fillStyle = col; g.beginPath(); g.arc(dx, 6, 2.5, 0, TAU); g.fill(); }
-    g.fillStyle = acc; g.fillRect(cx - 1.5, 6, 3, 30);
+    const dn = toN(d, this.defaults[d.k] ?? d.d), dy = cy - (dn - n) * S;
+    if (dy > 0 && dy < H) { g.fillStyle = col; g.beginPath(); g.arc(W - 5, dy, 2.5, 0, TAU); g.fill(); }
+    g.fillStyle = acc; g.fillRect(4, cy - 1.5, W - 12, 3);
   }
-  scale(d) { return d.opts ? Math.max(90, 84 * (d.opts.length - 1)) : 900; }
-  bindRuler() {
+  scale() { return 900; }
+  bindWheel() {
     const cv = this.canvas;
-    let lastX = 0, raw = 0, dragging = false, changed = false;
+    let lastY = 0, raw = 0, dragging = false, changed = false;
     cv.addEventListener('pointerdown', (e) => {
       const d = this.def(this.active); if (!d) return;
-      dragging = true; changed = false; lastX = e.clientX; raw = toN(d, this.values[d.k] ?? d.d);
-      cv.setPointerCapture(e.pointerId);
+      dragging = true; changed = false; lastY = e.clientY; raw = toN(d, this.values[d.k] ?? d.d);
+      cv.setPointerCapture(e.pointerId); e.preventDefault();
     });
     cv.addEventListener('pointermove', (e) => {
       if (!dragging) return;
       const d = this.def(this.active);
-      raw = clamp(raw - (e.clientX - lastX) / this.scale(d), 0, 1); lastX = e.clientX;
+      raw = clamp(raw - (e.clientY - lastY) / this.scale(), 0, 1); lastY = e.clientY;
       const v = fromN(d, raw);
       if (v !== this.values[d.k]) { this.values[d.k] = v; changed = true; this.update(); this.opts.onInput && this.opts.onInput(d.k); }
       else this.draw();
@@ -1271,8 +1329,8 @@ class Dials {
     cv.addEventListener('wheel', (e) => {
       e.preventDefault();
       const d = this.def(this.active), n = toN(d, this.values[d.k] ?? d.d);
-      const step = d.opts ? 1 / (d.opts.length - 1) : 0.01;
-      this.values[d.k] = fromN(d, clamp(n + (e.deltaY < 0 ? step : -step), 0, 1)); this.update();
+      this.values[d.k] = fromN(d, clamp(n + (e.deltaY < 0 ? 0.01 : -0.01), 0, 1)); this.update();
+      this.opts.onInput && this.opts.onInput(d.k);
       clearTimeout(this.wt); this.wt = setTimeout(() => this.opts.onCommit && this.opts.onCommit(d.k), 350);
     }, { passive: false });
   }
@@ -1281,7 +1339,7 @@ class Dials {
 /* =====================================================================
    Settings, storage
    ===================================================================== */
-const settings = Object.assign({ undo: 20, pickMin: 5, autoPreview: true, micNs: false, forcePick: false, exFormat: 'mp3-192', exNorm: true, exChannels: '2' },
+const settings = Object.assign({ wsAuto: 'off', undo: 20, pickMin: 5, autoPreview: true, micNs: false, forcePick: false, exFormat: 'mp3-192', exNorm: true, exChannels: '2' },
   JSON.parse(localStorage.getItem('listen-settings') || '{}'));
 const saveSettings = () => localStorage.setItem('listen-settings', JSON.stringify(settings));
 let ownRecipes = JSON.parse(localStorage.getItem('listen-recipes') || '[]');
@@ -1485,7 +1543,7 @@ function toAudioBuffer(ctx, b) {
   return ab;
 }
 function stopPlayback() {
-  if (player) { try { player.src.onended = null; player.src.stop(); } catch (e) {} player = null; }
+  if (player) { const p = player; try { p.src.onended = null; p.src.stop(); } catch (e) {} player = null; p.onEnd && p.onEnd(true); }
   $('playBtn').textContent = '▶';
 }
 function playBuf(b, opts = {}) {
@@ -1495,8 +1553,8 @@ function playBuf(b, opts = {}) {
   src.buffer = toAudioBuffer(ctx, b); src.loop = !!opts.loop;
   src.connect(g).connect(ctx.destination);
   const t0 = ctx.currentTime + 0.02; src.start(t0);
-  player = { src, t0, dur: bufLen(b) / SR, offset: opts.offset ?? null, loop: !!opts.loop };
-  src.onended = () => { if (player && player.src === src) { player = null; $('playBtn').textContent = '▶'; drawPlayhead(); } };
+  player = { src, t0, dur: bufLen(b) / SR, offset: opts.offset ?? null, loop: !!opts.loop, onEnd: opts.onEnd };
+  src.onended = () => { if (player && player.src === src) { const p = player; player = null; $('playBtn').textContent = '▶'; drawPlayhead(); p.onEnd && p.onEnd(false); } };
   if (opts.offset != null) { $('playBtn').textContent = '❚❚'; requestAnimationFrame(tick); }
 }
 function mixRange(a, e) {
@@ -2010,26 +2068,30 @@ $('genVary').addEventListener('click', () => {
 });
 $('genAdd').addEventListener('click', () => addClipAndAdvance({ name: gen.design.name, src: { kind: 'design', design: deepCopy(gen.design) } }));
 $('openWorkshop').addEventListener('click', () => openWorkshop(deepCopy(gen.design), null));
+$('newSoundBtn').addEventListener('click', () => openWorkshop(newDesign('My sound', [{ ...layerDefaults(T_SINE), id: uid() }]), null));
 
 /* =====================================================================
-   Sound Workshop — full-screen editor with layers, variants and its
-   own undo/redo. Opens for new sounds or for a clip on the track.
+   Sound Workshop — full-screen editor with layers, variants, its own
+   undo/redo, a mix wave with playhead and per-layer waves.
    ===================================================================== */
-const ws = { design: null, clipId: null, undo: [], redo: [], dirty: false, openLayers: new Set(), openSecs: new Set(), dials: [] };
+const ws = { design: null, clipId: null, undo: [], redo: [], dirty: false, openLayers: new Set(), openSecs: new Set(), dials: [],
+  pos: 0, play: null, relView: new Set(), npView: {}, kbOct: 4, pinned: false };
 const wsLayers = () => curLayers(ws.design);
+const layerCache = new Map();
 function fillWsStart() {
-  let h = '<option value="">Load a preset…</option><option value="empty">Empty (one layer)</option>';
+  let h = '<option value="">Load a preset…</option><option value="empty">Simple sine (one layer)</option>';
   THEMES.forEach((t, ti) => { h += `<optgroup label="${t.name}">` + t.presets.map((p, pi) => `<option value="${ti}:${pi}">${p.name}</option>`).join('') + '</optgroup>'; });
   $('wsStart').innerHTML = h;
 }
 function openWorkshop(design, clipId) {
   stopPlayback();
-  ws.design = design; ws.clipId = clipId; ws.undo = []; ws.redo = []; ws.dirty = false;
+  ws.design = design; ws.clipId = clipId; ws.undo = []; ws.redo = []; ws.dirty = false; ws.pos = 0;
   ws.design.variants.forEach(withIds);
-  ws.openLayers = new Set([wsLayers()[0]?.id]); ws.openSecs = new Set();
+  ws.openLayers = new Set([wsLayers()[0]?.id]); ws.openSecs = new Set(); ws.relView = new Set();
   $('wsUse').textContent = clipId ? 'Update clip' : 'Add to track';
   $('workshop').hidden = false; document.body.classList.add('ws-open');
   $('workshop').scrollTop = 0;
+  setAutoButtons();
   renderWorkshop();
 }
 function closeWorkshop(force) {
@@ -2042,15 +2104,121 @@ function wsPush(snap) {
   ws.redo = []; ws.dirty = true; wsUndoButtons();
 }
 function wsUndoButtons() { $('wsUndo').disabled = !ws.undo.length; $('wsRedo').disabled = !ws.redo.length; }
-function wsRestore(s) { ws.design = JSON.parse(s); ws.dirty = true; renderWorkshop(); if (settings.autoPreview) previewDesign(ws.design); }
+function wsRestore(s) { ws.design = JSON.parse(s); ws.dirty = true; renderWorkshop(); autoPlay(); }
 $('wsUndo').addEventListener('click', () => { if (!ws.undo.length) return; ws.redo.push(wsSnap()); wsRestore(ws.undo.pop()); });
 $('wsRedo').addEventListener('click', () => { if (!ws.redo.length) return; ws.undo.push(wsSnap()); wsRestore(ws.redo.pop()); });
 $('wsClose').addEventListener('click', () => closeWorkshop());
 
+/* ---------- Rendering helpers ---------- */
+function mixBuf() { return renderDesignCached(wsLayers(), ws.design.seed); }
+function layerRaw(li) { // un-normalized layer incl. leading silence (delay)
+  const L = wsLayers()[li], key = ws.design.seed + ':' + li + ':' + JSON.stringify(L);
+  if (!layerCache.has(key)) { if (layerCache.size > 24) layerCache.delete(layerCache.keys().next().value); layerCache.set(key, renderLayer(L, mulberry32(((ws.design.seed >>> 0) + li * 7919) >>> 0))); }
+  return layerCache.get(key);
+}
+function mixLen() { return Math.max(0.01, ...wsLayers().map((L, i) => bufLen(layerRaw(i)) / SR)); }
+
+/* ---------- Playback (mix and single layers) ---------- */
+function wsPlayMix(from) {
+  const b = mixBuf(), dur = bufLen(b) / SR;
+  if (from == null) from = ws.pos >= dur - 0.01 ? 0 : ws.pos;
+  playBuf(sliceBuf(b, from, dur), { onEnd: (stopped) => { const p = ws.play; ws.play = null; if (!stopped && p) ws.pos = p.from; wsPlayButtons(); wsDrawHeads(); } });
+  ws.play = { kind: 'mix', from, t0: player.t0, dur: dur - from };
+  wsPlayButtons(); requestAnimationFrame(wsTick);
+}
+function wsPlayLayer(li) {
+  const L = wsLayers()[li], b = renderDesign(wsLayers(), ws.design.seed, li), from = Math.min(L.delay, bufLen(b) / SR - 0.01);
+  playBuf(sliceBuf(b, from, bufLen(b) / SR), { onEnd: () => { ws.play = null; wsPlayButtons(); wsDrawHeads(); } });
+  ws.play = { kind: 'layer', li, from, t0: player.t0, dur: bufLen(b) / SR - from };
+  wsPlayButtons(); requestAnimationFrame(wsTick);
+}
+function wsCurPos() { return ws.play ? ws.play.from + Math.max(0, Math.min(ws.play.dur, actx.currentTime - ws.play.t0)) : ws.pos; }
+function wsTick() { wsDrawHeads(); if (ws.play) requestAnimationFrame(wsTick); }
+function wsPlayButtons() {
+  const mixOn = ws.play && ws.play.kind === 'mix';
+  $('wsPlay').textContent = mixOn ? '❚❚' : '▶';
+  $('wsPlay').title = mixOn ? 'Pause' : 'Play';
+  document.querySelectorAll('.layer').forEach((el, i) => {
+    const b = el.querySelector('[data-a=solo]'); if (!b) return;
+    const on = ws.play && ws.play.kind === 'layer' && ws.play.li === i;
+    b.textContent = on ? '■' : '▶'; b.title = on ? 'Stop' : 'Play only this layer'; b.classList.toggle('playing', !!on);
+  });
+}
+function autoPlay(li) {
+  if (settings.wsAuto === 'off') return;
+  if (settings.wsAuto === 'layer' && li != null) wsPlayLayer(li); else wsPlayMix(0);
+}
+$('wsPlay').addEventListener('click', () => {
+  if (ws.play && ws.play.kind === 'mix') { ws.pos = wsCurPos(); stopPlayback(); return; } // pause
+  wsPlayMix();
+});
+$('wsStop').addEventListener('click', () => { stopPlayback(); ws.pos = 0; wsDrawHeads(); });
+function setAutoButtons() { document.querySelectorAll('#wsAuto button').forEach((b) => b.classList.toggle('active', b.dataset.v === settings.wsAuto)); }
+$('wsAuto').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; settings.wsAuto = b.dataset.v; saveSettings(); setAutoButtons(); });
+$('wsPin').addEventListener('click', () => { ws.pinned = !ws.pinned; $('wsMix').classList.toggle('pinned', ws.pinned); $('wsPin').classList.toggle('active', ws.pinned); });
+// Tap or drag on the mix wave to position the playhead
+(() => {
+  const cv = $('wsWave'); let down = false;
+  const setPos = (e) => {
+    const r = cv.getBoundingClientRect(), dur = bufLen(mixBuf()) / SR;
+    ws.pos = clamp((e.clientX - r.left) / r.width, 0, 1) * dur; wsDrawHeads();
+  };
+  cv.addEventListener('pointerdown', (e) => { down = true; cv.setPointerCapture(e.pointerId); if (ws.play) stopPlayback(); setPos(e); });
+  cv.addEventListener('pointermove', (e) => { if (down) setPos(e); });
+  cv.addEventListener('pointerup', () => { down = false; });
+})();
+
+/* ---------- Drawing ---------- */
+function drawWsWave() {
+  if (!ws.design) return;
+  const cv = $('wsWave'), W = cv.clientWidth || 300;
+  let b; try { b = mixBuf(); } catch (e) { return; }
+  drawWave(cv, b, W, 70);
+  $('wsInfo').textContent = 'Mix · ' + (bufLen(b) / SR).toFixed(2) + ' s · ' + wsLayers().filter((l) => l.on).length + ' of ' + wsLayers().length + ' layers on';
+  wsDrawLayerWaves(); wsDrawHeads();
+}
+function wsDrawLayerWaves() {
+  const total = mixLen();
+  document.querySelectorAll('#wsLayers .layer').forEach((el, li) => {
+    const cv = el.querySelector('.layer-wave canvas'); if (!cv) return;
+    const L = wsLayers()[li], raw = layerRaw(li), rel = ws.relView.has(L.id);
+    const W = cv.clientWidth || 300, H = 36, dpr = window.devicePixelRatio || 1;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+    const start = Math.round(L.delay * SR), n = bufLen(raw);
+    const s0 = rel ? 0 : start, s1 = rel ? Math.round(total * SR) : n;
+    if (rel) { g.fillStyle = cssVar('--surface-2'); g.fillRect(W * start / s1, 0, W * (n - start) / s1, H); }
+    const pk = Math.max(1e-6, peakOf(raw)), step = (s1 - s0) / W;
+    g.fillStyle = cssVar('--wave');
+    for (let x = 0; x < W; x++) {
+      const a = Math.floor(s0 + x * step), e = Math.min(n, Math.floor(s0 + (x + 1) * step) + 1);
+      let mx = 0; const inc = Math.max(1, ((e - a) / 48) | 0);
+      for (let i = Math.max(0, a); i < e; i += inc) { const v = Math.max(Math.abs(raw.L[i]), Math.abs(raw.R[i])); if (v > mx) mx = v; }
+      const h = Math.max(mx > 0 ? 0.5 : 0, (mx / pk) * (H / 2 - 2));
+      g.fillRect(x, H / 2 - h, 1, h * 2);
+    }
+    el.querySelector('.layer-wave small').textContent = rel ? 'in the mix · ' + total.toFixed(2) + ' s' : 'layer only · ' + ((n - start) / SR).toFixed(2) + ' s';
+  });
+}
+function wsDrawHeads() {
+  const pos = wsCurPos(), dur = bufLen(mixBuf()) / SR;
+  $('wsPh').style.left = clamp(pos / dur, 0, 1) * 100 + '%';
+  $('wsTime').textContent = fmtTime(pos);
+  const total = mixLen();
+  document.querySelectorAll('#wsLayers .layer').forEach((el, li) => {
+    const ph = el.querySelector('.layer-ph'); if (!ph) return;
+    const L = wsLayers()[li], raw = layerRaw(li), rel = ws.relView.has(L.id);
+    const playing = ws.play && (ws.play.kind === 'mix' || ws.play.li === li);
+    const x = rel ? pos / total : (pos - L.delay) / Math.max(0.001, bufLen(raw) / SR - L.delay);
+    ph.hidden = !playing && !(rel && pos > 0) || x < 0 || x > 1;
+    ph.style.left = clamp(x, 0, 1) * 100 + '%';
+  });
+}
+
+/* ---------- Layout ---------- */
 function renderWorkshop() {
   const d = ws.design;
   $('wsName').value = d.name;
-  // variants
   const vc = $('wsVariants'); vc.innerHTML = '';
   d.variants.forEach((v, i) => {
     const b = document.createElement('button'); b.className = 'chip' + (i === d.active ? ' own' : ''); b.textContent = String.fromCharCode(65 + i);
@@ -2058,7 +2226,7 @@ function renderWorkshop() {
       const x = document.createElement('span'); x.className = 'x'; x.textContent = '✕'; b.appendChild(x);
       x.addEventListener('click', (e) => { e.stopPropagation(); wsPush(); d.variants.splice(i, 1); d.active = Math.max(0, i - 1); renderWorkshop(); });
     }
-    b.addEventListener('click', () => { if (i === d.active) { previewDesign(d); return; } d.active = i; ws.openLayers = new Set([wsLayers()[0]?.id]); renderWorkshop(); previewDesign(d); });
+    b.addEventListener('click', () => { if (i === d.active) { wsPlayMix(0); return; } stopPlayback(); d.active = i; ws.openLayers = new Set([wsLayers()[0]?.id]); renderWorkshop(); wsPlayMix(0); });
     vc.appendChild(b);
   });
   if (d.variants.length < 8) {
@@ -2066,36 +2234,40 @@ function renderWorkshop() {
     add.addEventListener('click', () => { wsPush(); d.variants.push(withIds(deepCopy(wsLayers()).map((l) => ({ ...l, id: uid() })))); d.active = d.variants.length - 1; renderWorkshop(); showStatus('Variant ' + String.fromCharCode(65 + d.active) + ' created — change it and compare'); });
     vc.appendChild(add);
   }
-  // layers
   const box = $('wsLayers'); box.innerHTML = ''; ws.dials = [];
   wsLayers().forEach((L, li) => box.appendChild(layerCard(L, li)));
   $('wsAddLayer').disabled = wsLayers().length >= MAX_LAYERS;
   $('wsAddLayer').textContent = wsLayers().length >= MAX_LAYERS ? 'Maximum of ' + MAX_LAYERS + ' layers reached' : '＋ Add layer';
-  wsUndoButtons(); drawWsWave();
+  wsUndoButtons(); wsPlayButtons(); drawWsWave();
 }
 function layerCard(L, li) {
   const el = document.createElement('div'); el.className = 'layer' + (L.on ? '' : ' off');
   const open = ws.openLayers.has(L.id);
   el.innerHTML = `<div class="layer-head"><input type="checkbox" ${L.on ? 'checked' : ''} title="Layer on / off">
     <div class="title"><b>Layer ${li + 1} ${open ? '▾' : '▸'}</b><small></small></div>
-    <button data-a="solo" title="Play only this layer">▶</button><button data-a="dup" title="Duplicate layer">⧉</button><button data-a="del" title="Remove layer">✕</button></div>`;
-  el.querySelector('small').textContent = layerSummary(L);
-  el.querySelector('input').addEventListener('change', (e) => { wsPush(); L.on = e.target.checked; renderWorkshop(); if (settings.autoPreview) previewDesign(ws.design); });
+    <button data-a="solo" title="Play only this layer">▶</button><button data-a="dup" title="Duplicate layer">⧉</button><button data-a="del" title="Remove layer">✕</button></div>
+    <div class="layer-wave" title="Tap to switch view"><canvas></canvas><div class="layer-ph" hidden></div><small></small></div>
+    <div class="layer-quick"></div>`;
+  el.querySelector('.title small').textContent = layerSummary(L);
+  el.querySelector('input').addEventListener('change', (e) => { wsPush(); L.on = e.target.checked; renderWorkshop(); autoPlay(); });
   el.querySelector('.title').addEventListener('click', () => { open ? ws.openLayers.delete(L.id) : ws.openLayers.add(L.id); renderWorkshop(); });
+  el.querySelector('.layer-wave').addEventListener('click', () => { ws.relView.has(L.id) ? ws.relView.delete(L.id) : ws.relView.add(L.id); wsDrawLayerWaves(); wsDrawHeads(); });
   el.querySelectorAll('.layer-head button').forEach((b) => b.addEventListener('click', () => {
     const a = b.dataset.a, layers = wsLayers();
-    if (a === 'solo') return previewDesign(ws.design, li);
+    if (a === 'solo') { if (ws.play && ws.play.kind === 'layer' && ws.play.li === li) stopPlayback(); else wsPlayLayer(li); return; }
     if (a === 'dup') { if (layers.length >= MAX_LAYERS) return showStatus('Maximum of ' + MAX_LAYERS + ' layers'); wsPush(); const c = { ...deepCopy(L), id: uid() }; layers.splice(li + 1, 0, c); ws.openLayers.add(c.id); }
     if (a === 'del') { if (layers.length <= 1) return showStatus('A sound needs at least one layer'); wsPush(); layers.splice(li, 1); }
-    renderWorkshop(); if (settings.autoPreview) previewDesign(ws.design);
+    stopPlayback(); renderWorkshop(); autoPlay();
   }));
+  // Level and Length are always reachable
+  ws.dials.push(makeLayerDials(el.querySelector('.layer-quick'), QUICK_DEFS, L, li, el, null, true));
   if (!open) return el;
   const body = document.createElement('div'); body.className = 'layer-body';
   SECTIONS.forEach((sec) => {
     const defs = sec.defs(L);
     const key = L.id + ':' + sec.id, isOpen = ws.openSecs.has(key) || (sec.open && !ws.openSecs.has('x' + key));
     const s = document.createElement('div'); s.className = 'sec' + (isOpen ? ' open' : '');
-    const h = document.createElement('button'); h.className = 'sec-head'; h.type = 'button';
+    const h = document.createElement('button'); h.className = 'sec-head'; h.type = 'button'; h.dataset.sec = sec.id;
     h.innerHTML = `<span>${sec.name}</span><small></small><i>${isOpen ? '▾' : '▸'}</i>`;
     h.querySelector('small').textContent = secSummary(sec.id, L);
     h.addEventListener('click', () => {
@@ -2105,61 +2277,122 @@ function layerCard(L, li) {
     s.appendChild(h);
     if (isOpen) {
       const dc = document.createElement('div'); dc.className = 'sec-body'; s.appendChild(dc);
-      if (!defs.length) dc.innerHTML = '<p class="hint">Noise has no pitch — shape it with Brightness instead.</p>';
-      else {
-        let snap = null;
-        const dl = new Dials(dc, defs, L, {
-          defaults: layerDefaults(L.type),
-          onInput: () => { if (!snap) snap = wsSnap(); h.querySelector('small').textContent = secSummary(sec.id, L); },
-          onCommit: (k) => {
-            wsPush(snap || wsSnap()); snap = null;
-            if (k === 'type' || k === 'mode') renderWorkshop(); else { el.querySelector('.layer-head small').textContent = layerSummary(L); drawWsWave(); }
-            if (settings.autoPreview) previewDesign(ws.design);
-          },
-        });
-        ws.dials.push(dl);
-      }
+      if (!defs.length && !(sec.id === 'pitch' && L.type === T_NOTES)) dc.innerHTML = '<p class="hint">Noise has no pitch — shape it with Brightness instead.</p>';
+      else if (defs.length) ws.dials.push(makeLayerDials(dc, defs, L, li, el, h));
+      if (sec.id === 'pitch' && L.type === T_NOTES) dc.appendChild(notePicker(L, li));
     }
     body.appendChild(s);
   });
   el.appendChild(body);
   return el;
 }
+function makeLayerDials(container, defs, L, li, el, head, compact) {
+  const holder = document.createElement('div'); container.appendChild(holder);
+  let snap = null;
+  return new Dials(holder, defs, L, {
+    compact, defaults: layerDefaults(L.type),
+    onInput: () => { if (!snap) snap = wsSnap(); if (head) head.querySelector('small').textContent = secSummary(head.dataset.sec, L); },
+    onCommit: (k) => {
+      wsPush(snap || wsSnap()); snap = null;
+      if (k === 'type' || k === 'mode' || k === 'inst') renderWorkshop();
+      else { el.querySelector('.title small').textContent = layerSummary(L); drawWsWave(); }
+      autoPlay(li);
+    },
+  });
+}
 function secSummary(id, L) {
   const f = (k, u) => fmtVal({ u }, L[k]);
   switch (id) {
     case 'source': return L.type === T_NOTES || L.type === T_NOISE ? layerSummary(L) : SRC_TYPES[L.type];
-    case 'pitch': return L.type === T_NOISE ? '—' : L.type === T_NOTES ? f('note', 'note') + (L.glide ? ' · glide ' + f('glide', 'st') : '') : f('f0', 'Hz') + ' → ' + f('f1', 'Hz') + ' Hz';
-    case 'volume': return (L.delay ? 'at ' + f('delay', 's') + ' · ' : '') + f('dur', 's') + ' · fade ' + L.decay + '%';
+    case 'pitch': return L.type === T_NOISE ? '—' : L.type === T_NOTES ? (L.notes && L.notes.length ? L.notes.map(midiName).join(' ') : f('note', 'note')) + (L.glide ? ' · glide ' + f('glide', 'st') : '') : f('f0', 'Hz') + ' → ' + f('f1', 'Hz') + ' Hz';
+    case 'volume': return (L.delay ? 'at ' + f('delay', 's') + ' · ' : '') + 'in ' + f('attack', 's') + ' · fade ' + L.decay + '%';
     case 'bright': return L.ftype === 0 && L.b0 >= 17000 && L.b1 >= 17000 ? 'open' : ['LP', 'HP', 'BP'][L.ftype] + ' ' + f('b0', 'Hz') + ' → ' + f('b1', 'Hz');
     case 'move': return [L.vib ? 'vibrato' : '', L.pulse ? 'pulse' : '', L.pan0 !== L.pan1 ? 'moves' : '', L.width ? 'wide' : ''].filter(Boolean).join(' · ') || 'still';
     case 'char': return [L.drive ? 'drive ' + L.drive + '%' : '', L.crush < 16 ? L.crush + ' bit' : ''].filter(Boolean).join(' · ') || 'clean';
   }
   return '';
 }
-function drawWsWave() {
-  if (!ws.design) return;
-  const cv = $('wsWave'), W = cv.clientWidth || 300;
-  let b; try { b = renderDesignCached(wsLayers(), ws.design.seed); } catch (e) { return; }
-  drawWave(cv, b, W, 70);
-  $('wsInfo').textContent = 'Length ' + (bufLen(b) / SR).toFixed(2) + ' s · ' + wsLayers().filter((l) => l.on).length + ' of ' + wsLayers().length + ' layers on';
+
+/* ---------- Note picker: text, piano keyboard, guitar fretboard ---------- */
+const STRINGS = [64, 59, 55, 50, 45, 40]; // E4 B3 G3 D3 A2 E2 (high string on top, like tabs)
+function previewNote(inst, m) {
+  const n = Math.round(0.9 * SR), b = newBuf(n);
+  renderNote(inst, mtof(m), n, 0, b.L, b.R, 1, 1, 0.6, () => 1, mulberry32(7));
+  playBuf(fadeEdges(b, 0.001, 0.05));
+}
+function notePicker(L, li) {
+  const box = document.createElement('div'); box.className = 'notepick';
+  const view = ws.npView[L.id] || (L.inst === 2 ? 'strings' : 'keys');
+  box.innerHTML = `<div class="label-main">Notes <span class="muted">— pick your own, or leave empty for automatic notes</span></div>
+    <div class="row"><input type="text" placeholder="e.g. C E G · Am · G7 · A3 · Fis"><button class="np-clear">Clear</button></div>
+    <div class="segment mini np-tabs"><button data-v="keys">Keyboard</button><button data-v="strings">Strings</button></div>
+    <div class="np-view"></div>
+    <p class="hint">Tap to add or remove notes — they play in the order you pick them (Arpeggio). Text: note names with optional octave (A3), chords like Am, G7, Fmaj7, Dsus4. German H and Fis/Es work too.</p>`;
+  const inp = box.querySelector('input');
+  inp.value = (L.notes || []).map(midiName).join(' ');
+  const setNotes = (arr) => { wsPush(); L.notes = arr; renderWorkshop(); autoPlay(li); };
+  inp.addEventListener('change', () => {
+    const r = parseNotes(inp.value);
+    if (r.bad.length) showStatus('Not understood: ' + r.bad.join(', '));
+    setNotes(r.notes);
+  });
+  box.querySelector('.np-clear').addEventListener('click', () => setNotes([]));
+  const toggle = (m) => {
+    const arr = (L.notes || []).slice(), i = arr.indexOf(m);
+    if (i >= 0) arr.splice(i, 1); else { if (arr.length >= 16) return showStatus('Up to 16 notes'); arr.push(m); previewNote(L.inst, m); }
+    setNotes(arr);
+  };
+  box.querySelectorAll('.np-tabs button').forEach((b) => {
+    b.classList.toggle('active', b.dataset.v === view);
+    b.addEventListener('click', () => { ws.npView[L.id] = b.dataset.v; renderWorkshop(); });
+  });
+  const v = box.querySelector('.np-view'), sel = new Set(L.notes || []);
+  if (view === 'keys') {
+    const nav = document.createElement('div'); nav.className = 'kb-nav';
+    nav.innerHTML = `<button data-d="-1">◀</button><span>C${ws.kbOct} – B${ws.kbOct + 1}</span><button data-d="1">▶</button>`;
+    nav.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { ws.kbOct = clamp(ws.kbOct + +b.dataset.d, 1, 7); renderWorkshop(); }));
+    const kb = document.createElement('div'); kb.className = 'kb';
+    const base = (ws.kbOct + 1) * 12, whites = [0, 2, 4, 5, 7, 9, 11];
+    for (let o = 0; o < 2; o++) whites.forEach((pc) => {
+      const m = base + o * 12 + pc, k = document.createElement('button');
+      k.className = 'kw' + (sel.has(m) ? ' on' : ''); k.textContent = pc === 0 ? 'C' + (ws.kbOct + o) : '';
+      k.addEventListener('click', () => toggle(m)); kb.appendChild(k);
+    });
+    [1, 3, 6, 8, 10].forEach((pc) => [0, 1].forEach((o) => {
+      const m = base + o * 12 + pc, k = document.createElement('button');
+      const wi = { 1: 0, 3: 1, 6: 3, 8: 4, 10: 5 }[pc] + o * 7;
+      k.className = 'kb-black' + (sel.has(m) ? ' on' : ''); k.style.left = `calc(${(wi + 1) / 14 * 100}% - 3.2%)`;
+      k.addEventListener('click', () => toggle(m)); kb.appendChild(k);
+    }));
+    v.append(nav, kb);
+  } else {
+    const fb = document.createElement('div'); fb.className = 'fret';
+    let h = '<div class="fret-row fret-nums"><span></span>' + Array.from({ length: 13 }, (_, f) => `<span>${f}</span>`).join('') + '</div>';
+    STRINGS.forEach((open, si) => {
+      h += `<div class="fret-row"><span class="sname">${NOTE_NAMES[open % 12]}</span>` +
+        Array.from({ length: 13 }, (_, f) => `<button data-m="${open + f}" class="${sel.has(open + f) ? 'on' : ''}${f === 0 ? ' open' : ''}"></button>`).join('') + '</div>';
+    });
+    fb.innerHTML = h;
+    fb.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => toggle(+b.dataset.m)));
+    v.appendChild(fb);
+  }
+  return box;
 }
 function redrawDials() { ws.dials.forEach((d) => d.draw()); if (trDials) trDials.draw(); }
 
 $('wsName').addEventListener('change', () => { wsPush(); ws.design.name = $('wsName').value.trim() || 'Sound'; });
 $('wsStart').addEventListener('change', (e) => {
   const v = e.target.value; e.target.value = ''; if (!v) return;
-  wsPush();
+  wsPush(); stopPlayback();
   let layers, name;
   if (v === 'empty') { layers = [layerDefaults(T_SINE)]; name = 'My sound'; }
   else { const [ti, pi] = v.split(':').map(Number), pr = THEMES[ti].presets[pi]; layers = deepCopy(pr.layers); name = pr.name; }
   ws.design.variants[ws.design.active] = withIds(layers.map((l) => ({ ...l, id: uid() })));
   if (ws.design.variants.length === 1) ws.design.name = name;
-  ws.openLayers = new Set([wsLayers()[0].id]);
-  renderWorkshop(); if (settings.autoPreview) previewDesign(ws.design);
+  ws.openLayers = new Set([wsLayers()[0].id]); ws.pos = 0;
+  renderWorkshop(); autoPlay();
 });
-$('wsPlay').addEventListener('click', () => previewDesign(ws.design));
-$('wsVary').addEventListener('click', () => { wsPush(); varyLayers(wsLayers(), null, 0.12); ws.design.seed = (Math.random() * 1e9) | 0; renderWorkshop(); previewDesign(ws.design); });
+$('wsVary').addEventListener('click', () => { wsPush(); varyLayers(wsLayers(), null, 0.12); ws.design.seed = (Math.random() * 1e9) | 0; renderWorkshop(); wsPlayMix(0); });
 $('wsAddLayer').addEventListener('click', () => {
   if (wsLayers().length >= MAX_LAYERS) return;
   wsPush(); const L = { ...layerDefaults(T_SINE), id: uid(), level: 60 }; wsLayers().push(L); ws.openLayers.add(L.id); renderWorkshop();
@@ -2416,7 +2649,7 @@ document.addEventListener('keydown', (e) => {
   if (!$('workshop').hidden) { // Sound Workshop has its own shortcuts
     if (e.target.matches('input, select, textarea') || [...document.querySelectorAll('.modal-bg')].some((m) => !m.hidden)) return;
     const m = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
-    if (e.code === 'Space') { e.preventDefault(); previewDesign(ws.design); }
+    if (e.code === 'Space') { e.preventDefault(); $('wsPlay').click(); }
     else if (m && k === 'z' && !e.shiftKey) { e.preventDefault(); $('wsUndo').click(); }
     else if (m && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); $('wsRedo').click(); }
     else if (e.key === 'Escape') closeWorkshop();

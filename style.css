@@ -173,7 +173,8 @@ html:not([data-theme="dark"]) .tl-selection { background: rgba(0,0,0,.08); }
 .dial .knob {
   width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
   font-size: 12.5px; font-weight: 700; color: var(--text); position: relative;
-  background: conic-gradient(var(--knob-fill, #555) var(--a0, 0deg) var(--a1, 0deg), var(--surface-2) 0);
+  isolation: isolate;
+  background: conic-gradient(var(--surface-2) 0deg var(--a0, 0deg), var(--knob-fill, #555) var(--a0, 0deg) var(--a1, 0deg), var(--surface-2) var(--a1, 0deg));
 }
 .dial .knob::after {
   content: ""; position: absolute; inset: 4px; border-radius: 50%; background: var(--surface);
@@ -183,9 +184,21 @@ html:not([data-theme="dark"]) .tl-selection { background: rgba(0,0,0,.08); }
 .dial.active .knob { --knob-fill: var(--accent); }
 .dial.active .knob span { color: var(--accent); }
 .dial.active .lbl { color: var(--text); font-weight: 600; }
-.dial-name { text-align: center; font-size: 14px; font-weight: 600; margin-top: 2px; }
-.dial-tip { text-align: center; font-size: 12px; color: var(--text-secondary); min-height: 16px; margin: 2px 8px 0; }
-.ruler { width: 100%; height: 46px; display: block; touch-action: none; cursor: ew-resize; margin-top: 2px; }
+.dial-name { font-size: 13.5px; font-weight: 600; margin-top: 4px; }
+.dial-tip { font-size: 12px; color: var(--text-secondary); margin: 2px 0 0; line-height: 1.4; }
+.dial-wrap { display: flex; gap: 10px; align-items: stretch; margin-top: 4px; }
+.dial-left { flex: 1; min-width: 0; }
+.dial-wrap .dial-row { flex-wrap: wrap; overflow: visible; gap: 8px 10px; }
+.wheel { width: 56px; min-height: 120px; flex-shrink: 0; display: block; touch-action: none; cursor: ns-resize;
+  background: var(--surface-2); border-radius: 10px; border: 1px solid var(--border); }
+.dial-wrap.compact .wheel { min-height: 84px; }
+.dial-wrap.compact .dial-name { text-align: left; font-size: 12.5px; }
+.choice-row { margin: 6px 0 10px; }
+.choice-label { font-size: 12.5px; font-weight: 600; margin-bottom: 6px; }
+.choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.choice { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; cursor: pointer; }
+.choice.active { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+.choice-tip { font-size: 11.5px; color: var(--text-secondary); margin-top: 6px; line-height: 1.4; }
 
 /* ---------- Transform ---------- */
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 14px; }
@@ -214,11 +227,11 @@ html:not([data-theme="dark"]) .tl-selection { background: rgba(0,0,0,.08); }
 .workshop { position: fixed; inset: 0; z-index: 35; background: var(--bg); overflow-y: auto; -webkit-overflow-scrolling: touch; }
 body.ws-open { overflow: hidden; }
 .ws-inner { max-width: 720px; margin: 0 auto; padding: 12px 16px 40px; }
-.ws-top { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; position: sticky; top: 0; background: var(--bg); padding: 4px 0; z-index: 2; }
+.ws-top { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; position: sticky; top: 0; background: var(--bg); padding: 4px 0; z-index: 7; }
 .ws-top h2 { flex: 1; font-size: 17px; margin: 0; }
 .ws-label { margin-top: 12px; }
 .ws-wave { width: 100%; height: 70px; display: block; background: var(--surface-2); border-radius: 8px; }
-.ws-actions { position: sticky; bottom: 0; background: var(--bg); padding: 10px 0 4px; }
+.ws-actions { position: sticky; bottom: 0; background: var(--bg); padding: 10px 0 4px; z-index: 6; }
 .layer { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); margin-bottom: 10px; }
 .layer.off { opacity: .55; }
 .layer-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; }
@@ -235,6 +248,43 @@ body.ws-open { overflow: hidden; }
 .sec-body { padding-bottom: 8px; }
 .sec-body .dials, .sec-body .dial-row { margin-top: 0; }
 .proj button[data-a="play"] { width: 34px; }
+
+/* mix, layer waves, note picker */
+.mix { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px 4px; margin-bottom: 12px; }
+.mix.pinned { position: sticky; top: 48px; z-index: 5; box-shadow: 0 6px 16px rgba(0,0,0,.35); }
+.mix .hint { margin: 6px 0; }
+.mix-wave, .layer-wave { position: relative; cursor: pointer; }
+.mix-wave canvas { touch-action: none; }
+.ws-ph, .layer-ph { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #ffcc33; pointer-events: none; }
+.mix-bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.mix-bar .time { font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 600; }
+.segment.mini { margin: 0; padding: 2px; flex: 1; }
+.segment.mini button { padding: 6px 4px; font-size: 12.5px; }
+.layer-head button.playing { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.layer-wave { margin: 0 12px 6px; }
+.layer-wave canvas { width: 100%; height: 36px; display: block; background: var(--bg); border-radius: 6px; }
+.layer-wave small { display: block; font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+.layer-quick { padding: 0 12px 8px; }
+.notepick { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.notepick .row { margin-top: 8px; }
+.notepick .row button { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+.np-tabs { margin-top: 8px; }
+.kb-nav { display: flex; align-items: center; justify-content: space-between; margin: 8px 0 6px; font-size: 12.5px; color: var(--text-secondary); }
+.kb-nav button { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 7px; width: 34px; height: 30px; cursor: pointer; }
+.kb { position: relative; display: flex; height: 110px; user-select: none; }
+.kw { flex: 1; background: #f4f4f2; border: 1px solid #999; border-radius: 0 0 5px 5px; margin: 0 1px 0 0; color: #555; font-size: 9px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 4px; cursor: pointer; }
+.kw.on { background: var(--accent); color: #fff; }
+.kb-black { position: absolute; top: 0; width: 6.4%; height: 64%; background: #1a1a1a; border: 1px solid #000; border-radius: 0 0 4px 4px; z-index: 1; cursor: pointer; padding: 0; }
+.kb-black.on { background: var(--accent); }
+.fret { overflow-x: auto; margin-top: 8px; padding-bottom: 4px; }
+.fret-row { display: flex; align-items: center; min-width: 560px; position: relative; }
+.fret-row:not(.fret-nums)::before { content: ""; position: absolute; left: 22px; right: 0; top: 50%; height: 1px; background: var(--text-secondary); opacity: .6; pointer-events: none; }
+.fret-row span, .fret-row button { flex: 1; text-align: center; }
+.fret-row .sname, .fret-nums span:first-child { flex: 0 0 22px; font-size: 11px; color: var(--text-secondary); }
+.fret-nums span { font-size: 10px; color: var(--text-secondary); }
+.fret-row button { height: 26px; border: none; border-right: 2px solid var(--border); background: none; cursor: pointer; position: relative; z-index: 1; }
+.fret-row button.open { border-right: 4px solid var(--text-secondary); }
+.fret-row button.on::after { content: ""; position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: var(--accent); }
 
 /* ---------- Add audio ---------- */
 .drop {

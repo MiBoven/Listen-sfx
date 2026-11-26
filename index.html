@@ -117,8 +117,11 @@
     <button id="genVary" title="Make a new variation">🎲 Vary</button>
     <button class="primary" id="genAdd">＋ Add to track</button>
   </div>
-  <button class="wide" id="openWorkshop">🎛 Open in Sound Workshop</button>
-  <p class="hint">See exactly how this sound is built from layers, change it step by step — or start from scratch.</p>
+  <div class="btn-row">
+    <button id="newSoundBtn">＋ New sound</button>
+    <button id="openWorkshop">🎛 Edit in Workshop</button>
+  </div>
+  <p class="hint">“Edit in Workshop” shows exactly how this sound is built from layers. “New sound” starts from a single sine wave.</p>
 </section>
 
 <!-- Transform -->
@@ -179,11 +182,24 @@
       <div class="row"><label class="label-main" for="wsStart">Start</label><select id="wsStart"></select></div>
       <div class="label-main ws-label">Variants <span class="muted">— copy the sound, change the copy, tap A / B to compare</span></div>
       <div class="chips" id="wsVariants"></div>
-      <canvas id="wsWave" class="ws-wave" height="70"></canvas>
-      <p class="hint" id="wsInfo"></p>
-      <div class="btn-row"><button class="primary" id="wsPlay">▶ Play</button><button id="wsVary">🎲 Vary</button></div>
     </div>
-    <p class="hint">A sound is made of up to 4 layers that play together. Every layer has the same sections: <b>Source</b> (raw material) → <b>Pitch</b> → <b>Volume</b> (when and how long) → <b>Brightness</b> (filter) → <b>Movement</b> → <b>Character</b>. Switch layers off or tap ▶ on a layer to hear what each one adds.</p>
+    <div class="mix" id="wsMix">
+      <div class="mix-wave"><canvas id="wsWave" class="ws-wave" height="70"></canvas><div class="ws-ph" id="wsPh"></div></div>
+      <div class="mix-bar">
+        <button class="icon accent" id="wsPlay" title="Play">▶</button>
+        <button class="icon" id="wsStop" title="Stop">■</button>
+        <span class="time" id="wsTime">0:00.00</span>
+        <span class="spacer"></span>
+        <button class="icon sm" id="wsVary" title="Vary">🎲</button>
+        <button class="icon sm" id="wsPin" title="Pin the mix at the top">📌</button>
+      </div>
+      <div class="mix-bar">
+        <span class="muted">Autoplay</span>
+        <div class="segment mini" id="wsAuto"><button data-v="off">Off</button><button data-v="layer">Layer</button><button data-v="mix">Mix</button></div>
+      </div>
+      <p class="hint" id="wsInfo"></p>
+    </div>
+    <p class="hint">A sound is made of up to 4 layers that play together. Every layer has the same sections: <b>Source</b> (raw material) → <b>Pitch</b> → <b>Volume</b> (when and how long) → <b>Brightness</b> (filter) → <b>Movement</b> → <b>Character</b>. Switch layers off or tap ▶ on a layer to hear what each one adds. Tap a layer's wave to see it on its own or within the whole mix.</p>
     <div id="wsLayers"></div>
     <button class="wide" id="wsAddLayer">＋ Add layer</button>
     <div class="btn-row ws-actions">
