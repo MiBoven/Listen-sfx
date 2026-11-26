@@ -1,5 +1,17 @@
 # Changelog
 
+### 0.2.0 — 2026-11-26 — Sound Workshop
+- New full-screen Sound Workshop with its own undo/redo: every sound is built from 1–4 layers with identical sections (Source, Pitch, Volume, Brightness, Movement, Character)
+- Sources: Sine, Triangle, Saw, Square, Noise (bright/medium/dark) and Notes with six synthesized instruments (E-piano, Bell, Pluck, Organ, Pad, Chip), four play modes and seven moods
+- Variants (A, B, C …) to compare ideas side by side; solo and mute per layer; duplicate and remove layers
+- Source and Pitch open by default, other sections collapsed with a summary line
+- All 48 presets rebuilt from layers, so they can be opened and rebuilt step by step; the crackling explosion was replaced
+- Clips from the Workshop can be reopened via "Edit in Workshop" and updated
+- My Sounds: a library shared by all projects, filled from the Workshop or from any clip (effects and trim included)
+- Create tab simplified to preset browsing with Preview, Vary, Add to track and Open in Sound Workshop
+- Fixed: ruler of the dials could be drawn squashed
+- Clips made with the v0.1.0 generator still play but can't be edited anymore
+
 ### 0.1.0 — 2026-11-26 — First release
 - Sound generator with six themes (Standard, Sci-Fi, Fantasy, RPG, Horror, Retro) and 48 presets built on eight synthesis engines (8-Bit, Impact, Power, Whoosh, Zap, Sparkle, Goosebumps, Drone)
 - Infinity dials: round value buttons plus a swipeable tick ruler with an explanation of what each setting does; double-tap resets to the preset value

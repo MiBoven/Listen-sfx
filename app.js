@@ -5,7 +5,7 @@
    export. Everything runs client-side; no network requests.
    ===================================================================== */
 
-const APP_VERSION = '0.1.0';
+const APP_VERSION = '0.2.0';
 const SR = 48000;
 const $ = (id) => document.getElementById(id);
 
@@ -522,6 +522,7 @@ const ENGINES = {
   },
 };
 
+// Legacy (v0.1.0) engines — kept so clips made with 0.1.0 still play.
 function generate(engineId, params, seed) {
   const eng = ENGINES[engineId];
   const p = Object.assign(defaultsOf(eng.params), params);
@@ -530,71 +531,378 @@ function generate(engineId, params, seed) {
   return fadeEdges(normalizeBuf(b, 0.85), 0.001, 0.01);
 }
 
+
 /* =====================================================================
-   Themes & presets
+   Layer engine (v0.2.0) — every sound is 1–4 layers, and every layer
+   has the same sections and controls: Source, Pitch, Volume,
+   Brightness, Movement, Character.
    ===================================================================== */
+const SRC_TYPES = ['Sine', 'Triangle', 'Saw', 'Square', 'Noise', 'Notes'];
+const T_SINE = 0, T_TRI = 1, T_SAW = 2, T_SQR = 3, T_NOISE = 4, T_NOTES = 5;
+const INSTRUMENTS = ['E-piano', 'Bell', 'Pluck', 'Organ', 'Pad', 'Chip'];
+const HARMONIES = ['Major', 'Minor', 'Pentatonic', 'Dreamy', 'Mysterious', 'Dark', 'Power'];
+const HARM_CHORD = [[0, 4, 7], [0, 3, 7], [0, 4, 7, 9], [0, 4, 7, 11, 14], [0, 4, 8], [0, 1, 6], [0, 7, 12]];
+const HARM_SCALE = [[0, 2, 4, 5, 7, 9, 11], [0, 2, 3, 5, 7, 8, 10], [0, 2, 4, 7, 9], [0, 2, 4, 6, 7, 9, 11], [0, 2, 4, 6, 8, 10], [0, 1, 3, 6, 7, 8, 11], [0, 7]];
+const MAX_LAYERS = 4;
+
+function layerDefaults(type = T_SINE) {
+  return { on: true, type, color: 1, inst: 0, mode: 0, harmony: 0, density: 8, range: 12,
+    f0: 440, f1: 440, pcurve: 0, note: 60, glide: 0,
+    level: 80, delay: 0, attack: 0.005, dur: 1, decay: 50,
+    ftype: 0, b0: 16000, b1: 16000, bcurve: 0, reso: 10,
+    vib: 0, vrate: 6, pulse: 0, prate: 8, pan0: 0, pan1: 0, width: 0,
+    drive: 0, crush: 16 };
+}
+
+// Section definitions. Source and Pitch adapt to the source type; the rest is identical for every layer.
+const SECTIONS = [
+  { id: 'source', name: 'Source', open: true, defs: (L) => {
+    const d = [{ k: 'type', n: 'Source', opts: SRC_TYPES, d: 0, tip: 'The raw material. Sine = pure, round · Triangle = soft · Saw = bright, buzzy · Square = hollow, retro · Noise = air, blasts, wind · Notes = instruments and melodies' }];
+    if (L.type === T_NOISE) d.push({ k: 'color', n: 'Noise color', opts: ['Bright', 'Medium', 'Dark'], d: 1, tip: 'Bright = hiss, sizzle · Medium = wind, surf · Dark = rumble, thunder' });
+    if (L.type === T_NOTES) d.push(
+      { k: 'inst', n: 'Instrument', opts: INSTRUMENTS, d: 0, tip: 'E-piano = warm keys · Bell = glitter, chimes · Pluck = harp, guitar · Organ = steady · Pad = choir-like, soft · Chip = 8-bit' },
+      { k: 'mode', n: 'Play', opts: ['Single', 'Chord', 'Arpeggio', 'Random'], d: 0, tip: 'Single = one note · Chord = notes together · Arpeggio = notes one after another, upwards · Random = scattered notes (sparkles)' },
+      { k: 'harmony', n: 'Mood', opts: HARMONIES, d: 0, tip: 'Major = happy · Minor = sad · Pentatonic = can\'t sound wrong · Dreamy = floating · Mysterious = magic, unreal · Dark = threatening · Power = bold, open' },
+      { k: 'density', n: 'Notes per s', min: 1, max: 40, d: 8, u: '/s', tip: 'Arpeggio and Random: how many notes per second' },
+      { k: 'range', n: 'Range', min: 0, max: 36, d: 12, u: 'st', tip: 'Arpeggio and Random: how far the notes spread (12 = one octave)' });
+    return d; } },
+  { id: 'pitch', name: 'Pitch', open: true, defs: (L) => {
+    if (L.type === T_NOISE) return [];
+    if (L.type === T_NOTES) return [
+      { k: 'note', n: 'Root note', min: 24, max: 96, d: 60, u: 'note', tip: 'The base note — C4 is middle C. Low = big and dark, high = tiny and bright' },
+      { k: 'glide', n: 'Glide', min: -24, max: 24, d: 0, u: 'st', tip: 'Bends everything up or down over the length — rising magic, falling defeat' }];
+    return [
+      { k: 'f0', n: 'Start pitch', min: 20, max: 8000, log: true, d: 440, u: 'Hz', tip: 'Pitch at the beginning. ~50 Hz = deep rumble, ~440 Hz = middle, ~3000 Hz = piercing' },
+      { k: 'f1', n: 'End pitch', min: 20, max: 8000, log: true, d: 440, u: 'Hz', tip: 'Pitch at the end. Lower than start = falling (laser, power down) · higher = rising (riser, power up)' },
+      { k: 'pcurve', n: 'Pitch curve', min: -100, max: 100, d: 0, tip: 'Negative = changes fast at first (punchy drops) · positive = slow start, fast finish (risers)' }];
+  } },
+  { id: 'volume', name: 'Volume', open: false, defs: () => [
+    { k: 'level', n: 'Level', min: 0, max: 100, d: 80, u: '%', tip: 'Loudness of this layer compared to the others' },
+    { k: 'delay', n: 'Start at', min: 0, max: 10, d: 0, u: 's', tip: 'When this layer starts — e.g. a boom after a whoosh' },
+    { k: 'attack', n: 'Fade in', min: 0, max: 10, d: 0.005, u: 's', tip: 'Short = hard hit · long = swelling, creeping in' },
+    { k: 'dur', n: 'Length', min: 0.03, max: 16, d: 1, u: 's', tip: 'How long this layer lasts' },
+    { k: 'decay', n: 'Fade out', min: 0, max: 100, d: 50, u: '%', tip: '0 = stays loud until the end · high = dies away quickly, like a hit or pluck' }] },
+  { id: 'bright', name: 'Brightness', open: false, defs: () => [
+    { k: 'ftype', n: 'Filter', opts: ['Low-pass', 'High-pass', 'Band-pass'], d: 0, tip: 'Low-pass = removes highs (muffled) · High-pass = removes lows (thin) · Band-pass = keeps a narrow band (whistling wind, radio)' },
+    { k: 'b0', n: 'Start', min: 30, max: 18000, log: true, d: 16000, u: 'Hz', tip: 'Filter frequency at the beginning. Low = dark, far away · high = bright, close' },
+    { k: 'b1', n: 'End', min: 30, max: 18000, log: true, d: 16000, u: 'Hz', tip: 'Filter frequency at the end — bright → dark makes a blast fade into the distance' },
+    { k: 'bcurve', n: 'Curve', min: -100, max: 100, d: 0, tip: 'Negative = moves fast at first · positive = slow start, fast finish' },
+    { k: 'reso', n: 'Resonance', min: 0, max: 100, d: 10, u: '%', tip: 'Emphasis at the filter frequency — high values whistle and screech' }] },
+  { id: 'move', name: 'Movement', open: false, defs: () => [
+    { k: 'vib', n: 'Vibrato', min: 0, max: 100, d: 0, u: '%', tip: 'Wobbling pitch — voices, sirens, alien' },
+    { k: 'vrate', n: 'Vibrato speed', min: 0.1, max: 60, log: true, d: 6, u: 'Hz', tip: 'Slow = singing · fast = buzzing, laser' },
+    { k: 'pulse', n: 'Pulse', min: 0, max: 100, d: 0, u: '%', tip: 'Pulsing volume — engines, rotors, alarms' },
+    { k: 'prate', n: 'Pulse speed', min: 0.1, max: 60, log: true, d: 8, u: 'Hz', tip: 'Slow = breathing · fast = motor, helicopter' },
+    { k: 'pan0', n: 'Pan start', min: -100, max: 100, d: 0, tip: '-100 = left · 0 = center · 100 = right' },
+    { k: 'pan1', n: 'Pan end', min: -100, max: 100, d: 0, tip: 'Different from start = the sound travels across' },
+    { k: 'width', n: 'Width', min: 0, max: 100, d: 0, u: '%', tip: 'Stereo spread — 0 = narrow, 100 = all around you' }] },
+  { id: 'char', name: 'Character', open: false, defs: () => [
+    { k: 'drive', n: 'Drive', min: 0, max: 100, d: 0, u: '%', tip: 'Distortion — warmer and fatter, then dirty and aggressive' },
+    { k: 'crush', n: 'Bits', min: 2, max: 16, d: 16, int: true, tip: '16 = clean · lower = crunchy retro console sound' }] },
+];
+
+const shapeU = (u, curve) => Math.pow(u, Math.pow(2, curve / 40));
+
+/* ---------- Instruments for the "Notes" source ---------- */
+// Renders one note into dst (stereo arrays) at offset. pm(t) = pitch multiplier over absolute time.
+function renderNote(inst, f, len, off, dstL, dstR, gl, gr, amp, pm, rnd) {
+  const n = Math.min(len, dstL.length - off); if (n <= 0) return;
+  const t0 = off / SR;
+  switch (inst) {
+    case 0: { // E-piano: 2-operator FM with a short metallic tine
+      let cp = 0, mp = 0, tp = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / SR, fr = f * pm(t0 + t);
+        cp += fr / SR; mp += fr / SR; tp += fr * 14 / SR;
+        const I = 1.8 * Math.exp(-t / 0.35) + 0.25;
+        const y = (Math.sin(TAU * cp + I * Math.sin(TAU * mp)) * Math.exp(-t / 1.4) + Math.sin(TAU * tp) * 0.25 * Math.exp(-t / 0.015)) * Math.min(1, t / 0.002);
+        dstL[off + i] += y * amp * gl; dstR[off + i] += y * amp * gr;
+      }
+      break;
+    }
+    case 1: { // Bell: inharmonic partials (rotating-phasor oscillators, pitch updated every 32 samples)
+      const P = [1, 2.756, 5.404, 8.933], A = [1, 0.45, 0.25, 0.12], D = [1.2, 0.7, 0.4, 0.25];
+      for (let k = 0; k < 4; k++) {
+        if (f * P[k] > SR * 0.45) continue;
+        const m = Math.min(n, Math.round(D[k] * 7 * SR)), kd = Math.exp(-1 / (D[k] * SR));
+        let x = 0, y = 1, e = A[k] * amp, c = 1, s = 0;
+        for (let i = 0; i < m; i++) {
+          if ((i & 31) === 0) { const w = TAU * f * P[k] * pm(t0 + i / SR) / SR; c = Math.cos(w); s = Math.sin(w); const r = 1 / Math.hypot(x, y); x *= r; y *= r; }
+          const nx = x * c - y * s; y = x * s + y * c; x = nx;
+          const v = x * e * (i < 96 ? i / 96 : 1); e *= kd;
+          dstL[off + i] += v * gl; dstR[off + i] += v * gr;
+        }
+      }
+      break;
+    }
+    case 2: { // Pluck: Karplus-Strong string
+      const N = Math.max(2, Math.round(SR / f)), buf = new Float32Array(N);
+      let lp = 0; for (let i = 0; i < N; i++) { lp += 0.5 * ((rnd() * 2 - 1) - lp); buf[i] = lp; }
+      const fb = Math.min(0.9995, 0.994 + f / 40000);
+      let idx = 0;
+      for (let i = 0; i < n; i++) {
+        const nx = (idx + 1) % N, y = buf[idx];
+        buf[idx] = (buf[idx] + buf[nx]) * 0.5 * fb; idx = nx;
+        dstL[off + i] += y * amp * 1.6 * gl; dstR[off + i] += y * amp * 1.6 * gr;
+      }
+      break;
+    }
+    case 3: { // Organ: drawbar-like harmonics
+      const H = [[0.5, 0.5], [1, 1], [2, 0.6], [3, 0.4], [4, 0.3], [6, 0.15], [8, 0.12]], ph = H.map(() => 0);
+      for (let i = 0; i < n; i++) {
+        const t = i / SR, fr = f * pm(t0 + t); let y = 0;
+        for (let k = 0; k < H.length; k++) { if (f * H[k][0] > SR * 0.45) continue; ph[k] += fr * H[k][0] / SR; y += Math.sin(TAU * ph[k]) * H[k][1]; }
+        y *= 0.35 * Math.min(1, t / 0.008, (n - i) / (0.01 * SR));
+        dstL[off + i] += y * amp * gl; dstR[off + i] += y * amp * gr;
+      }
+      break;
+    }
+    case 4: { // Pad: detuned saws (stereo)
+      const det = [-0.006, 0, 0.0055], ph = det.map(() => rnd());
+      for (let i = 0; i < n; i++) {
+        const t = i / SR, fr = f * pm(t0 + t); let yl = 0, yr = 0;
+        for (let k = 0; k < 3; k++) { const dt = fr * (1 + det[k]) / SR; ph[k] += dt; if (ph[k] >= 1) ph[k] -= 1; const s = 2 * ph[k] - 1 - polyblep(ph[k], dt); if (k !== 2) yl += s; if (k !== 0) yr += s; }
+        const e = 0.3 * Math.min(1, t / 0.02, (n - i) / (0.05 * SR));
+        dstL[off + i] += yl * e * amp * gl; dstR[off + i] += yr * e * amp * gr;
+      }
+      break;
+    }
+    default: { // Chip: square with plucky decay
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = i / SR; ph += f * pm(t0 + t) / SR; if (ph >= 1) ph -= 1;
+        const y = (ph < 0.5 ? 0.5 : -0.5) * Math.max(0.35, Math.exp(-t / 0.25)) * Math.min(1, (n - i) / (0.004 * SR));
+        dstL[off + i] += y * amp * gl; dstR[off + i] += y * amp * gr;
+      }
+    }
+  }
+}
+const NOTE_TAIL = [2.5, 2.5, 2, 0, 0, 0]; // natural ring time for arpeggio/random notes (0 = gated)
+
+function renderNotes(P, dstL, dstR, rnd, vibFn) {
+  const n = dstL.length, dur = n / SR, w = P.width / 100;
+  const pm = (t) => Math.pow(2, P.glide * (t / dur) / 12) * vibFn(t);
+  const chord = HARM_CHORD[P.harmony] || HARM_CHORD[0], scale = HARM_SCALE[P.harmony] || HARM_SCALE[0];
+  const play = (midi, start, len, amp, pan) => {
+    const [gl, gr] = panGains(pan);
+    renderNote(P.inst, mtof(midi), Math.round(len * SR), Math.round(start * SR), dstL, dstR, gl, gr, amp, pm, rnd);
+  };
+  if (P.mode === 0) play(P.note, 0, dur, 0.7, 0);
+  else if (P.mode === 1) chord.forEach((iv, k) => play(P.note + iv, 0, dur, 0.7 / Math.sqrt(chord.length), (k / Math.max(1, chord.length - 1) * 2 - 1) * 0.6 * w));
+  else {
+    const step = 1 / P.density, tail = NOTE_TAIL[P.inst] || step * 1.2;
+    let t = 0, k = 0;
+    const notes = [];
+    const span = Math.max(0, P.range);
+    if (P.mode === 2) { // arpeggio: chord tones climbing through the range
+      for (let o = 0; o <= 3; o++) chord.forEach((iv) => { const m = iv + o * 12; if (m <= span || notes.length === 0) notes.push(m); });
+      if (!notes.length) notes.push(0);
+    }
+    while (t < dur - 0.01) {
+      let midi;
+      if (P.mode === 2) midi = P.note + notes[k % notes.length];
+      else {
+        const raw = P.note + (rnd() - 0.5) * span, oct = Math.floor(raw / 12), pc = raw - oct * 12;
+        let best = scale[0], bd = 99; for (const s of scale.concat([12])) { const d = Math.abs(s - pc); if (d < bd) { bd = d; best = s; } }
+        midi = oct * 12 + best;
+      }
+      play(midi, t, NOTE_TAIL[P.inst] ? tail : Math.min(tail, dur - t + 0.2), 0.45 * (P.mode === 3 ? 0.6 + rnd() * 0.4 : 1), (rnd() * 2 - 1) * 0.8 * w);
+      t += P.mode === 2 ? step : -Math.log(1 - rnd() * 0.98) * step; k++;
+    }
+  }
+}
+
+function renderLayer(L, rnd) {
+  const P = Object.assign(layerDefaults(L.type), L);
+  const start = Math.round(P.delay * SR), n = Math.max(1, Math.round(P.dur * SR));
+  const tail = P.type === T_NOTES && P.mode >= 2 ? Math.round((NOTE_TAIL[P.inst] || 0.2) * SR) : 0;
+  const total = n + tail, out = newBuf(start + total);
+  const sL = new Float32Array(total), sR = new Float32Array(total), w = P.width / 100;
+  const vibDepth = P.vib / 100 * 0.12, vibW = TAU * P.vrate;
+  const vibFn = (t) => 1 + vibDepth * Math.sin(vibW * t);
+  // --- source
+  if (P.type === T_NOTES) renderNotes(P, sL, sR, rnd, vibFn);
+  else if (P.type === T_NOISE) {
+    let bL = 0, bR = 0, pL = 0, pR = 0;
+    for (let i = 0; i < total; i++) {
+      const sh = rnd() * 2 - 1, xl = sh * (1 - w) + (rnd() * 2 - 1) * w, xr = sh * (1 - w) + (rnd() * 2 - 1) * w;
+      if (P.color === 0) { sL[i] = xl; sR[i] = xr; }
+      else if (P.color === 1) { pL += 0.18 * (xl - pL); pR += 0.18 * (xr - pR); sL[i] = pL * 2.2; sR[i] = pR * 2.2; }
+      else { bL = bL * 0.985 + xl * 0.15; bR = bR * 0.985 + xr * 0.15; sL[i] = bL * 1.3; sR[i] = bR * 1.3; }
+    }
+  } else {
+    const k = Math.pow(2, P.pcurve / 40), det = 1 + w * 0.006;
+    let a = 0, b = rnd() * w;
+    for (let i = 0; i < total; i++) {
+      const t = i / SR, u = Math.min(1, i / n);
+      const f = P.f0 * Math.pow(P.f1 / P.f0, Math.pow(u, k)) * vibFn(t), dt = f / SR, dt2 = dt * det;
+      a += dt; if (a >= 1) a -= 1; b += dt2; if (b >= 1) b -= 1;
+      sL[i] = oscSample(P.type, a, dt); sR[i] = oscSample(P.type, b, dt2);
+    }
+  }
+  // --- brightness, envelope, movement, character
+  const fL = new SVF(), fR = new SVF(), q = 0.6 + Math.pow(P.reso / 100, 2) * 18, bk = Math.pow(2, P.bcurve / 40);
+  const filt = !(P.ftype === 0 && P.b0 >= 17000 && P.b1 >= 17000);
+  const drive = 1 + P.drive / 100 * 25, dn = Math.tanh(drive), q2 = Math.pow(2, P.crush - 1);
+  const att = Math.max(0.001, P.attack), dk = P.decay / 100 * 4, pd = P.pulse / 100, pw = TAU * P.prate, lvl = Math.pow(P.level / 100, 1.5);
+  const rel = Math.max(1, Math.min(n, Math.round(0.008 * SR))), ring = P.type === T_NOTES && P.mode >= 2;
+  for (let i = 0; i < total; i++) {
+    const t = i / SR, u = Math.min(1, i / n);
+    let l = sL[i], r = sR[i];
+    if (filt) {
+      const fc = P.b0 * Math.pow(P.b1 / P.b0, Math.pow(u, bk));
+      fL.run(l, fc, q); fR.run(r, fc, q);
+      l = P.ftype === 0 ? fL.lp : P.ftype === 1 ? fL.hp : fL.bp * Math.min(3, Math.sqrt(q));
+      r = P.ftype === 0 ? fR.lp : P.ftype === 1 ? fR.hp : fR.bp * Math.min(3, Math.sqrt(q));
+    }
+    // envelope: fade in, fade-out curve over the length; arpeggio/random notes may ring past the end
+    let e = t < att ? t / att : 1;
+    if (ring) e *= dk > 0 ? Math.pow(1 - u * 0.85, dk) : 1;
+    else if (i >= n) e = 0;
+    else { if (dk > 0) e *= Math.pow(1 - u, dk); if (i >= n - rel) e *= (n - i) / rel; }
+    if (pd > 0) e *= 1 - pd * (0.5 + 0.5 * Math.sin(pw * t));
+    l *= e; r *= e;
+    if (P.drive > 0) { l = Math.tanh(l * drive) / dn; r = Math.tanh(r * drive) / dn; }
+    if (P.crush < 16) { l = Math.round(l * q2) / q2; r = Math.round(r * q2) / q2; }
+    const [gl, gr] = panGains((P.pan0 + (P.pan1 - P.pan0) * u) / 100);
+    out.L[start + i] = l * gl * 1.414 * lvl; out.R[start + i] = r * gr * 1.414 * lvl;
+  }
+  return out;
+}
+function oscSample(type, ph, dt) {
+  switch (type) {
+    case T_TRI: return 1 - 4 * Math.abs(ph - 0.5);
+    case T_SAW: return (2 * ph - 1 - polyblep(ph, dt)) * 0.8;
+    case T_SQR: return ((ph < 0.5 ? 1 : -1) + polyblep(ph, dt) - polyblep((ph + 0.5) % 1, dt)) * 0.7;
+    default: return Math.sin(TAU * ph);
+  }
+}
+function renderDesign(layers, seed, onlyIdx = -1) {
+  const parts = [];
+  layers.forEach((L, i) => { if ((onlyIdx < 0 && L.on) || onlyIdx === i) parts.push(renderLayer(L, mulberry32(((seed >>> 0) + i * 7919) >>> 0))); });
+  const n = Math.max(1, ...parts.map(bufLen)), b = newBuf(n);
+  for (const p of parts) for (let i = 0; i < bufLen(p); i++) { b.L[i] += p.L[i]; b.R[i] += p.R[i]; }
+  for (const ch of [b.L, b.R]) for (let i = 0; i < ch.length; i++) if (!isFinite(ch[i])) ch[i] = 0;
+  return fadeEdges(normalizeBuf(trimTailSilence(b, 0.00002), 0.85), 0.0005, 0.005);
+}
+function layerSummary(L) {
+  if (L.type === T_NOTES) return INSTRUMENTS[L.inst] + ' · ' + ['single note', 'chord', 'arpeggio', 'random notes'][L.mode];
+  if (L.type === T_NOISE) return ['Bright', 'Medium', 'Dark'][L.color] + ' noise';
+  const f = (v) => fmtVal({ u: 'Hz' }, v) + ' Hz';
+  return SRC_TYPES[L.type] + ' ' + (Math.abs(L.f0 - L.f1) < 1 ? f(L.f0) : f(L.f0) + ' → ' + f(L.f1));
+}
+function designSummary(layers) { return layers.filter((l) => l.on).map(layerSummary).join(' + '); }
+function newDesign(name, layers) { return { name, variants: [layers], active: 0, seed: (Math.random() * 1e9) | 0 }; }
+const curLayers = (d) => d.variants[d.active];
+
+/* =====================================================================
+   Themes & presets — all built from layers, so they can be opened in
+   the Sound Workshop and rebuilt step by step.
+   ===================================================================== */
+const Ly = (type, o) => Object.assign(layerDefaults(type), o);
+const laserLayer = (delay) => Ly(T_SINE, { f0: 1800, f1: 300, pcurve: -20, dur: 0.2, decay: 70, drive: 40, vib: 30, vrate: 35, delay, level: 85 });
+const COIN = [Ly(T_SQR, { f0: 988, f1: 988, dur: 0.1, decay: 10, crush: 6, level: 70 }), Ly(T_SQR, { f0: 1319, f1: 1319, delay: 0.08, dur: 0.35, decay: 70, crush: 6, level: 70 })];
 const THEMES = [
   { id: 'standard', name: 'Standard', presets: [
-    ['Big explosion', 'impact', { length: 5, body: 85, thump: 45, bright: 7000, crunch: 55, tail: 80, debris: 55, width: 85 }],
-    ['Punchy hit', 'impact', { length: 0.6, body: 90, thump: 70, bright: 3500, crunch: 30, tail: 10, debris: 0, width: 40 }],
-    ['Cinematic boom', 'impact', { length: 6, body: 100, thump: 32, bright: 900, crunch: 20, tail: 90, debris: 5, width: 90 }],
-    ['Whoosh left → right', 'whoosh', { length: 1.2, peak: 50, pitch: 1100, sweep: 60, pan: 90, tone: 0, doppler: 25 }],
-    ['Riser', 'power', { start: 80, end: 1400, length: 5, curve: 60, harmonics: 45, wobble: 25, hum: 15, clunk: 0 }],
-    ['Power down', 'power', { start: 900, end: 30, length: 2.5, curve: -40, harmonics: 55, wobble: 20, hum: 10, clunk: 35 }],
-    ['Goosebumps choir', 'pad', { length: 8, root: 50, chord: 2, voice: 0, swell: 60, shimmer: 60, breath: 25, width: 85 }],
-    ['Sparkle', 'magic', { length: 2, density: 16, root: 84, spread: 24, scale: 0, shimmer: 60, rise: 50, decay: 0.7 }],
+    ['Big explosion', [Ly(T_NOISE, { color: 0, b0: 9000, b1: 150, bcurve: -60, dur: 4, attack: 0.002, decay: 75, drive: 35, width: 85, level: 90 }),
+      Ly(T_SINE, { f0: 150, f1: 45, pcurve: -70, dur: 1, decay: 85, drive: 25, level: 100 }),
+      Ly(T_NOISE, { color: 2, b0: 250, b1: 70, delay: 0.03, attack: 0.25, dur: 5, decay: 55, width: 90, level: 75 })]],
+    ['Punchy hit', [Ly(T_NOISE, { color: 0, b0: 5000, b1: 400, bcurve: -50, dur: 0.35, decay: 90, width: 40, level: 70 }),
+      Ly(T_SINE, { f0: 200, f1: 60, pcurve: -70, dur: 0.45, decay: 85, drive: 30, level: 100 })]],
+    ['Cinematic boom', [Ly(T_SINE, { f0: 90, f1: 32, pcurve: -50, dur: 3, decay: 70, drive: 15, level: 100 }),
+      Ly(T_NOISE, { color: 2, b0: 400, b1: 60, attack: 0.02, dur: 5, decay: 60, width: 90, level: 70 }),
+      Ly(T_NOISE, { color: 1, b0: 1200, b1: 200, bcurve: -40, dur: 2.5, decay: 80, width: 100, level: 35 })]],
+    ['Whoosh left → right', [Ly(T_NOISE, { color: 1, ftype: 2, b0: 500, b1: 2500, bcurve: 30, reso: 30, dur: 1.2, attack: 0.55, decay: 60, pan0: -90, pan1: 90, width: 30, level: 90 })]],
+    ['Riser', [Ly(T_SAW, { f0: 80, f1: 1400, pcurve: 60, dur: 5, attack: 4, decay: 0, b0: 300, b1: 8000, bcurve: 60, reso: 30, vib: 10, width: 50, level: 70 }),
+      Ly(T_NOISE, { color: 0, ftype: 2, b0: 400, b1: 8000, bcurve: 60, reso: 20, dur: 5, attack: 4.5, decay: 0, width: 80, level: 45 })]],
+    ['Power down', [Ly(T_SAW, { f0: 900, f1: 30, pcurve: -40, dur: 2.5, decay: 20, b0: 6000, b1: 300, pulse: 30, prate: 20, drive: 20, level: 80 })]],
+    ['Goosebumps choir', [Ly(T_NOTES, { inst: 4, mode: 1, harmony: 0, note: 50, dur: 8, attack: 4, decay: 20, b0: 2500, b1: 3500, vib: 8, vrate: 5, width: 90, level: 80 }),
+      Ly(T_NOTES, { inst: 1, mode: 3, harmony: 2, note: 86, range: 12, density: 2, delay: 2, dur: 6, attack: 2, decay: 30, width: 100, level: 30 })]],
+    ['Sparkle', [Ly(T_NOTES, { inst: 1, mode: 3, harmony: 2, note: 84, range: 24, density: 16, glide: 12, dur: 2, decay: 30, width: 90, level: 85 })]],
   ] },
   { id: 'scifi', name: 'Sci-Fi', presets: [
-    ['Laser shot', 'zap', { length: 0.3, start: 3200, end: 220, ratio: 1.5, depth: 45, repeat: 0, noise: 0 }],
-    ['Blaster pew-pew', 'zap', { length: 0.22, start: 1800, end: 300, ratio: 2.5, depth: 60, repeat: 2, noise: 10 }],
-    ['Shield up', 'power', { start: 120, end: 900, length: 1.6, curve: 40, harmonics: 30, wobble: 70, hum: 40, clunk: 0 }],
-    ['Generator shutdown', 'power', { start: 420, end: 22, length: 6, curve: -55, harmonics: 75, wobble: 60, hum: 55, clunk: 60 }],
-    ['Generator start-up', 'power', { start: 25, end: 380, length: 5, curve: 50, harmonics: 70, wobble: 60, hum: 50, clunk: 45 }],
-    ['Teleport', 'zap', { length: 1.8, start: 200, end: 4000, ratio: 3.5, depth: 85, repeat: 0, noise: 40 }],
-    ['Spaceship fly-by', 'whoosh', { length: 3, peak: 55, pitch: 500, sweep: 50, pan: 100, tone: 55, doppler: 80 }],
-    ['Alien drone', 'drone', { length: 8, pitch: 65, beat: 3, grit: 40, motion: 70, metal: 20, rise: 0 }],
+    ['Laser shot', [Ly(T_SQR, { f0: 3200, f1: 220, pcurve: -40, dur: 0.3, decay: 60, b0: 9000, b1: 2000, level: 80 }),
+      Ly(T_SINE, { f0: 1600, f1: 110, pcurve: -40, dur: 0.3, decay: 60, vib: 40, vrate: 40, level: 50 })]],
+    ['Blaster pew-pew', [laserLayer(0), laserLayer(0.22), laserLayer(0.44)]],
+    ['Shield up', [Ly(T_SAW, { f0: 120, f1: 900, pcurve: 40, dur: 1.6, attack: 0.3, decay: 30, b0: 800, b1: 5000, reso: 40, pulse: 50, prate: 14, level: 75 }),
+      Ly(T_NOTES, { inst: 1, mode: 2, harmony: 0, note: 72, density: 14, range: 24, dur: 1.4, width: 80, level: 35 })]],
+    ['Generator shutdown', [Ly(T_SAW, { f0: 420, f1: 22, pcurve: -55, dur: 6, decay: 15, b0: 4000, b1: 300, pulse: 55, prate: 18, drive: 30, level: 85 }),
+      Ly(T_SQR, { f0: 1680, f1: 88, pcurve: -55, dur: 5, decay: 40, b0: 6000, b1: 1000, level: 18 }),
+      Ly(T_SINE, { f0: 120, f1: 45, delay: 5.6, dur: 0.35, decay: 90, level: 90 }),
+      Ly(T_NOISE, { color: 1, ftype: 2, b0: 1800, b1: 1800, reso: 20, delay: 5.62, dur: 0.15, decay: 90, level: 60 })]],
+    ['Generator start-up', [Ly(T_SAW, { f0: 25, f1: 380, pcurve: 50, dur: 5, attack: 0.4, decay: 0, b0: 400, b1: 4000, pulse: 55, prate: 18, drive: 30, level: 85 }),
+      Ly(T_SQR, { f0: 100, f1: 1520, pcurve: 50, dur: 5, attack: 1, decay: 0, b0: 1000, b1: 6000, level: 18 }),
+      Ly(T_SINE, { f0: 120, f1: 45, dur: 0.3, decay: 90, level: 80 })]],
+    ['Teleport', [Ly(T_SINE, { f0: 200, f1: 4000, pcurve: 30, dur: 1.8, attack: 0.1, decay: 40, vib: 60, vrate: 30, level: 60 }),
+      Ly(T_NOTES, { inst: 1, mode: 3, harmony: 4, note: 84, range: 24, density: 25, glide: 12, dur: 1.8, width: 100, level: 45 }),
+      Ly(T_NOISE, { color: 0, ftype: 2, b0: 500, b1: 8000, reso: 50, dur: 1.8, attack: 0.9, decay: 50, width: 60, level: 40 })]],
+    ['Spaceship fly-by', [Ly(T_SAW, { f0: 180, f1: 120, dur: 3, attack: 1.4, decay: 70, b0: 600, b1: 1500, pan0: -100, pan1: 100, width: 40, level: 70 }),
+      Ly(T_NOISE, { color: 1, ftype: 2, b0: 300, b1: 1500, reso: 30, dur: 3, attack: 1.5, decay: 70, pan0: -100, pan1: 100, width: 40, level: 80 })]],
+    ['Alien drone', [Ly(T_SAW, { f0: 65, f1: 65, dur: 8, attack: 1.5, decay: 10, b0: 300, b1: 1200, reso: 50, vib: 6, vrate: 0.3, pulse: 30, prate: 3, width: 70, drive: 30, level: 80 }),
+      Ly(T_SQR, { f0: 98, f1: 92, dur: 8, attack: 3, decay: 10, b0: 800, b1: 400, width: 80, level: 30 })]],
   ] },
   { id: 'fantasy', name: 'Fantasy', presets: [
-    ['Fairy glisten', 'magic', { length: 3, density: 22, root: 86, spread: 24, scale: 3, shimmer: 80, rise: 40, decay: 1.2 }],
-    ['Spell cast', 'magic', { length: 1.8, density: 30, root: 72, spread: 30, scale: 4, shimmer: 60, rise: 90, decay: 0.5 }],
-    ['Healing light', 'magic', { length: 4, density: 7, root: 76, spread: 14, scale: 1, shimmer: 70, rise: 20, decay: 2.2 }],
-    ['Angel choir', 'pad', { length: 9, root: 55, chord: 6, voice: 0, swell: 55, shimmer: 80, breath: 20, width: 90 }],
-    ['Magic portal', 'power', { start: 60, end: 600, length: 4, curve: 20, harmonics: 20, wobble: 85, hum: 30, clunk: 0 }],
-    ['Wind spirit', 'whoosh', { length: 3.5, peak: 45, pitch: 700, sweep: 80, pan: 60, tone: 35, doppler: 10 }],
-    ['Enchanted harp', 'magic', { length: 2.5, density: 12, root: 67, spread: 24, scale: 1, shimmer: 20, rise: 100, decay: 1.6 }],
-    ['Crystal choir', 'pad', { length: 7, root: 62, chord: 4, voice: 3, swell: 40, shimmer: 70, breath: 5, width: 80 }],
+    ['Fairy glisten', [Ly(T_NOTES, { inst: 1, mode: 3, harmony: 3, note: 86, range: 24, density: 22, glide: 7, dur: 3, decay: 40, width: 100, level: 85 }),
+      Ly(T_NOISE, { color: 0, ftype: 1, b0: 8000, b1: 8000, dur: 3, attack: 1, decay: 60, width: 100, level: 12 })]],
+    ['Spell cast', [Ly(T_NOTES, { inst: 1, mode: 2, harmony: 4, note: 72, range: 30, density: 30, glide: 12, dur: 1.8, decay: 30, width: 90, level: 80 }),
+      Ly(T_NOISE, { color: 0, ftype: 2, b0: 400, b1: 6000, reso: 40, dur: 1.8, attack: 1.2, decay: 70, width: 70, level: 45 })]],
+    ['Healing light', [Ly(T_NOTES, { inst: 4, mode: 1, harmony: 0, note: 64, dur: 4, attack: 1.5, decay: 30, b0: 4000, b1: 4000, width: 90, level: 60 }),
+      Ly(T_NOTES, { inst: 1, mode: 3, harmony: 0, note: 79, range: 14, density: 7, dur: 4, decay: 30, width: 90, level: 60 })]],
+    ['Angel choir', [Ly(T_NOTES, { inst: 4, mode: 1, harmony: 3, note: 55, dur: 9, attack: 4.5, decay: 25, b0: 3000, b1: 3000, vib: 8, vrate: 5, width: 100, level: 80 }),
+      Ly(T_NOTES, { inst: 4, mode: 1, harmony: 0, note: 79, delay: 3, dur: 6, attack: 3, decay: 30, width: 100, level: 25 })]],
+    ['Magic portal', [Ly(T_SAW, { f0: 60, f1: 600, pcurve: 20, dur: 4, attack: 1, decay: 30, b0: 400, b1: 3000, reso: 50, pulse: 70, prate: 9, width: 60, level: 70 }),
+      Ly(T_NOTES, { inst: 1, mode: 3, harmony: 4, note: 74, range: 24, density: 10, glide: 12, dur: 4, width: 100, level: 40 })]],
+    ['Wind spirit', [Ly(T_NOISE, { color: 1, ftype: 2, b0: 400, b1: 1500, reso: 60, dur: 3.5, attack: 1.5, decay: 50, pulse: 25, prate: 0.8, pan0: -60, pan1: 60, width: 70, level: 85 }),
+      Ly(T_SINE, { f0: 900, f1: 1300, dur: 3.5, attack: 1.6, decay: 60, vib: 30, vrate: 4, level: 15 })]],
+    ['Enchanted harp', [Ly(T_NOTES, { inst: 2, mode: 2, harmony: 0, note: 55, range: 24, density: 12, dur: 2.5, decay: 20, width: 70, level: 85 })]],
+    ['Crystal choir', [Ly(T_NOTES, { inst: 3, mode: 1, harmony: 3, note: 62, dur: 7, attack: 3, decay: 30, b0: 6000, b1: 6000, vib: 5, vrate: 5, width: 90, level: 70 }),
+      Ly(T_NOTES, { inst: 1, mode: 3, harmony: 3, note: 86, density: 4, range: 12, dur: 7, width: 100, level: 30 })]],
   ] },
   { id: 'rpg', name: 'RPG', presets: [
-    ['Coin', 'retro', { wave: 0, freq: 988, slide: 0, length: 0.35, decay: 70, duty: 50, vibrato: 0, arp: 5, repeat: 0 }],
-    ['Level up', 'retro', { wave: 0, freq: 523, slide: 12, length: 0.9, decay: 30, duty: 25, vibrato: 0, arp: 7, repeat: 3 }],
-    ['Sword swing', 'whoosh', { length: 0.35, peak: 45, pitch: 2600, sweep: 70, pan: 40, tone: 0, doppler: 20 }],
-    ['Sword hit', 'impact', { length: 0.9, body: 30, thump: 120, bright: 14000, crunch: 60, tail: 5, debris: 40, width: 50 }],
-    ['Fireball blast', 'impact', { length: 2.5, body: 60, thump: 60, bright: 2500, crunch: 70, tail: 40, debris: 80, width: 80 }],
-    ['Potion / heal', 'magic', { length: 1.5, density: 18, root: 79, spread: 12, scale: 0, shimmer: 40, rise: 100, decay: 0.6 }],
-    ['Treasure found', 'magic', { length: 2.2, density: 24, root: 72, spread: 30, scale: 1, shimmer: 50, rise: 100, decay: 1 }],
-    ['Quest complete', 'pad', { length: 4, root: 60, chord: 2, voice: 2, swell: 15, shimmer: 40, breath: 0, width: 70 }],
+    ['Coin', COIN],
+    ['Level up', [Ly(T_NOTES, { inst: 5, mode: 2, harmony: 0, note: 72, range: 24, density: 14, dur: 0.9, decay: 30, crush: 6, level: 80 })]],
+    ['Sword swing', [Ly(T_NOISE, { color: 0, ftype: 2, b0: 1500, b1: 4000, reso: 40, dur: 0.35, attack: 0.15, decay: 70, pan0: -40, pan1: 40, level: 90 })]],
+    ['Sword clang', [Ly(T_SINE, { f0: 2200, f1: 2150, dur: 1.2, decay: 80, level: 40 }), Ly(T_SINE, { f0: 3170, f1: 3120, dur: 1, decay: 85, level: 30 }),
+      Ly(T_NOISE, { color: 0, ftype: 1, b0: 3000, b1: 3000, dur: 0.12, decay: 90, level: 70 }), Ly(T_SINE, { f0: 160, f1: 90, dur: 0.2, decay: 90, level: 60 })]],
+    ['Fireball blast', [Ly(T_NOISE, { color: 1, b0: 600, b1: 3000, bcurve: 40, dur: 0.8, attack: 0.7, decay: 0, width: 70, level: 60 }),
+      Ly(T_NOISE, { color: 0, b0: 6000, b1: 200, bcurve: -50, delay: 0.8, dur: 2, decay: 70, drive: 40, width: 90, level: 90 }),
+      Ly(T_SINE, { f0: 120, f1: 45, pcurve: -60, delay: 0.8, dur: 0.8, decay: 85, level: 90 })]],
+    ['Potion / heal', [Ly(T_NOTES, { inst: 1, mode: 2, harmony: 2, note: 79, range: 12, density: 18, glide: 5, dur: 1.5, decay: 30, width: 80, level: 85 })]],
+    ['Treasure found', [Ly(T_NOTES, { inst: 1, mode: 2, harmony: 0, note: 72, range: 30, density: 24, dur: 1.2, width: 80, level: 80 }),
+      Ly(T_NOTES, { inst: 4, mode: 1, harmony: 0, note: 60, dur: 2.2, attack: 0.2, decay: 40, width: 80, level: 50 })]],
+    ['Quest complete', [Ly(T_NOTES, { inst: 0, mode: 1, harmony: 0, note: 60, dur: 3, decay: 40, level: 80 }),
+      Ly(T_NOTES, { inst: 4, mode: 1, harmony: 0, note: 48, dur: 4, attack: 0.3, decay: 30, width: 80, level: 40 })]],
   ] },
   { id: 'horror', name: 'Horror', presets: [
-    ['Dark drone', 'drone', { length: 10, pitch: 45, beat: 1.2, grit: 30, motion: 40, metal: 0, rise: 0 }],
-    ['Metallic scrape', 'drone', { length: 5, pitch: 110, beat: 6, grit: 50, motion: 70, metal: 90, rise: 0 }],
-    ['Creaking metal', 'drone', { length: 4, pitch: 180, beat: 9, grit: 20, motion: 90, metal: 70, rise: -12 }],
-    ['Sub drop', 'power', { start: 140, end: 24, length: 3, curve: -30, harmonics: 10, wobble: 0, hum: 0, clunk: 20 }],
-    ['Ghost whoosh', 'whoosh', { length: 3, peak: 60, pitch: 450, sweep: 70, pan: -70, tone: 45, doppler: 50 }],
-    ['Tension riser', 'power', { start: 40, end: 700, length: 9, curve: 70, harmonics: 60, wobble: 45, hum: 40, clunk: 0 }],
-    ['Jump scare', 'impact', { length: 3, body: 90, thump: 40, bright: 12000, crunch: 80, tail: 50, debris: 20, width: 90 }],
-    ['Eerie choir', 'pad', { length: 10, root: 46, chord: 5, voice: 1, swell: 70, shimmer: 30, breath: 45, width: 90 }],
+    ['Dark drone', [Ly(T_SAW, { f0: 45, f1: 45, dur: 10, attack: 2, decay: 10, b0: 200, b1: 600, reso: 30, vib: 3, vrate: 0.2, width: 80, drive: 30, level: 80 }),
+      Ly(T_SAW, { f0: 46.2, f1: 46.2, dur: 10, attack: 2, decay: 10, b0: 200, b1: 600, reso: 30, width: 80, drive: 30, level: 60 }),
+      Ly(T_SINE, { f0: 22.5, f1: 22.5, dur: 10, attack: 2, decay: 10, level: 60 })]],
+    ['Metallic scrape', [Ly(T_NOISE, { color: 0, ftype: 2, b0: 2100, b1: 2600, reso: 95, dur: 5, attack: 0.5, decay: 20, pulse: 60, prate: 1.3, width: 50, level: 70 }),
+      Ly(T_NOISE, { color: 0, ftype: 2, b0: 3460, b1: 3100, reso: 95, dur: 5, attack: 1, decay: 30, pulse: 70, prate: 2.1, width: 60, level: 50 })]],
+    ['Creaking door', [Ly(T_NOISE, { color: 1, ftype: 2, b0: 900, b1: 600, reso: 95, dur: 4, attack: 0.2, decay: 30, pulse: 80, prate: 9, level: 80 }),
+      Ly(T_SAW, { f0: 300, f1: 180, dur: 4, attack: 0.3, decay: 30, b0: 1200, b1: 800, reso: 60, pulse: 90, prate: 9, level: 25 })]],
+    ['Sub drop', [Ly(T_SINE, { f0: 140, f1: 24, pcurve: -30, dur: 3, decay: 30, drive: 15, level: 100 })]],
+    ['Ghost whoosh', [Ly(T_NOISE, { color: 1, ftype: 2, b0: 300, b1: 900, reso: 70, dur: 3, attack: 1.6, decay: 60, pan0: 70, pan1: -70, width: 60, level: 80 }),
+      Ly(T_SINE, { f0: 700, f1: 450, dur: 3, attack: 1.5, decay: 60, vib: 40, vrate: 5, pan0: 70, pan1: -70, level: 20 })]],
+    ['Tension riser', [Ly(T_SAW, { f0: 40, f1: 700, pcurve: 70, dur: 9, attack: 7, decay: 0, b0: 300, b1: 5000, bcurve: 60, reso: 40, pulse: 40, prate: 6, width: 70, level: 70 }),
+      Ly(T_NOISE, { color: 0, ftype: 2, b0: 300, b1: 6000, bcurve: 60, reso: 40, dur: 9, attack: 8, decay: 0, width: 90, level: 40 })]],
+    ['Jump scare', [Ly(T_NOTES, { inst: 4, mode: 1, harmony: 5, note: 60, dur: 2.5, decay: 70, drive: 50, width: 90, level: 80 }),
+      Ly(T_NOISE, { color: 0, b0: 12000, b1: 300, bcurve: -50, dur: 1.5, decay: 85, width: 90, level: 70 }),
+      Ly(T_SINE, { f0: 80, f1: 35, dur: 1.5, decay: 80, level: 90 })]],
+    ['Eerie choir', [Ly(T_NOTES, { inst: 4, mode: 1, harmony: 5, note: 46, dur: 10, attack: 5, decay: 20, b0: 900, b1: 1600, reso: 40, vib: 15, vrate: 4, width: 100, level: 70 }),
+      Ly(T_NOISE, { color: 1, ftype: 2, b0: 700, b1: 1100, reso: 70, dur: 10, attack: 4, decay: 30, width: 100, level: 25 })]],
   ] },
   { id: 'retro', name: 'Retro (8-Bit)', presets: [
-    ['Coin', 'retro', { wave: 0, freq: 988, slide: 0, length: 0.35, decay: 70, duty: 50, arp: 5 }],
-    ['Jump', 'retro', { wave: 0, freq: 300, slide: 14, length: 0.3, decay: 50, duty: 25 }],
-    ['Laser', 'retro', { wave: 1, freq: 1400, slide: -30, length: 0.25, decay: 40 }],
-    ['Explosion', 'retro', { wave: 3, freq: 600, slide: -24, length: 0.9, decay: 60 }],
-    ['Power-up', 'retro', { wave: 2, freq: 330, slide: 24, length: 0.7, decay: 20, vibrato: 30, repeat: 2 }],
-    ['Hit / hurt', 'retro', { wave: 3, freq: 1200, slide: -12, length: 0.2, decay: 70 }],
-    ['Blip / select', 'retro', { wave: 0, freq: 880, length: 0.08, decay: 20 }],
-    ['Game over', 'retro', { wave: 2, freq: 440, slide: -24, length: 1.6, decay: 10, vibrato: 50, repeat: 3 }],
+    ['Coin', COIN],
+    ['Jump', [Ly(T_SQR, { f0: 300, f1: 650, dur: 0.3, decay: 50, crush: 6, level: 70 })]],
+    ['Laser', [Ly(T_SAW, { f0: 1400, f1: 250, pcurve: -20, dur: 0.25, decay: 40, crush: 6, level: 70 })]],
+    ['Explosion', [Ly(T_NOISE, { color: 0, b0: 3000, b1: 200, bcurve: -30, dur: 0.9, decay: 60, crush: 5, level: 90 })]],
+    ['Power-up', [Ly(T_NOTES, { inst: 5, mode: 2, harmony: 0, note: 60, range: 24, density: 16, glide: 12, dur: 0.7, crush: 6, level: 70 })]],
+    ['Hit / hurt', [Ly(T_NOISE, { color: 0, b0: 4000, b1: 800, dur: 0.2, decay: 70, crush: 5, level: 80 }), Ly(T_SQR, { f0: 300, f1: 120, dur: 0.15, decay: 70, crush: 5, level: 50 })]],
+    ['Blip / select', [Ly(T_SQR, { f0: 880, f1: 880, dur: 0.08, decay: 20, crush: 6, level: 70 })]],
+    ['Game over', [Ly(T_SQR, { f0: 440, f1: 110, dur: 1.6, decay: 10, vib: 40, vrate: 8, crush: 6, level: 70 })]],
   ] },
-].map((t) => ({ ...t, presets: t.presets.map(([name, engine, params]) => ({ name, engine, params })) }));
+].map((t) => ({ ...t, presets: t.presets.map(([name, layers]) => ({ name, layers })) }));
 
 /* =====================================================================
    Effects (Magic Transform chain). Each effect takes a buffer and
@@ -921,7 +1229,7 @@ class Dials {
   }
   draw() {
     const cv = this.canvas, dpr = window.devicePixelRatio || 1, W = cv.clientWidth || 300, H = 46;
-    if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
     const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
     const d = this.def(this.active); if (!d) return;
     const cs = getComputedStyle(document.documentElement);
@@ -933,15 +1241,15 @@ class Dials {
       if (x < -2 || x > W + 2) continue;
       const major = d.opts || i % 5 === 0;
       g.fillStyle = col; g.globalAlpha = Math.max(0.25, 1 - Math.abs(x - cx) / (W / 2)) * (major ? 1 : 0.7);
-      g.fillRect(Math.round(x) - 0.5, major ? 14 : 18, 1.5, major ? 18 : 10);
-      if (d.opts) { g.font = '10px sans-serif'; g.textAlign = 'center'; g.fillText(d.opts[i], x, 44); }
+      g.fillRect(Math.round(x) - 0.5, d.opts ? 12 : major ? 14 : 18, 1.5, d.opts ? 18 : major ? 18 : 10);
+      if (d.opts) { g.font = '11px sans-serif'; g.textAlign = 'center'; g.fillText(d.opts[i], x, 45); }
     }
     g.globalAlpha = 1;
     const dn = toN(d, this.defaults[d.k] ?? d.d), dx = cx + (dn - n) * S;
     if (dx > 0 && dx < W) { g.fillStyle = col; g.beginPath(); g.arc(dx, 6, 2.5, 0, TAU); g.fill(); }
     g.fillStyle = acc; g.fillRect(cx - 1.5, 6, 3, 30);
   }
-  scale(d) { return d.opts ? Math.max(70, 50 * (d.opts.length - 1)) : 900; }
+  scale(d) { return d.opts ? Math.max(90, 84 * (d.opts.length - 1)) : 900; }
   bindRuler() {
     const cv = this.canvas;
     let lastX = 0, raw = 0, dragging = false, changed = false;
@@ -982,11 +1290,12 @@ const saveRecipes = () => localStorage.setItem('listen-recipes', JSON.stringify(
 let db = null;
 function openDB() {
   return new Promise((res, rej) => {
-    const r = indexedDB.open('listen', 1);
+    const r = indexedDB.open('listen', 2);
     r.onupgradeneeded = () => {
       const d = r.result;
-      d.createObjectStore('projects', { keyPath: 'id' });
-      d.createObjectStore('assets', { keyPath: 'id' }).createIndex('project', 'projectId');
+      if (!d.objectStoreNames.contains('projects')) d.createObjectStore('projects', { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('assets')) d.createObjectStore('assets', { keyPath: 'id' }).createIndex('project', 'projectId');
+      if (!d.objectStoreNames.contains('library')) d.createObjectStore('library', { keyPath: 'id' }); // "My Sounds", shared by all projects
     };
     r.onsuccess = () => { db = r.result; res(); };
     r.onerror = () => rej(r.error);
@@ -1016,14 +1325,19 @@ let undoStack = [], redoStack = [];
 const getClip = (id) => project.clips.find((c) => c.id === id);
 const selClip = () => (selectedId ? getClip(selectedId) : null);
 
-function srcKey(clip) { return clip.src.kind === 'gen' ? 'g:' + clip.src.engine + ':' + clip.src.seed + ':' + JSON.stringify(clip.src.params) : 'a:' + clip.src.assetId; }
+function srcKey(clip) {
+  const s = clip.src;
+  if (s.kind === 'design') return 'd:' + s.design.seed + ':' + JSON.stringify(curLayers(s.design));
+  return s.kind === 'gen' ? 'g:' + s.engine + ':' + s.seed + ':' + JSON.stringify(s.params) : 'a:' + s.assetId;
+}
 function fullKey(clip) { return srcKey(clip) + '|' + JSON.stringify(clip.chain.filter((s) => s.on).map((s) => [s.type, s.params])); }
 
 async function getSource(clip) {
   const k = srcKey(clip);
   if (srcCache.has(k)) return srcCache.get(k);
   let b;
-  if (clip.src.kind === 'gen') b = generate(clip.src.engine, clip.src.params, clip.src.seed);
+  if (clip.src.kind === 'design') b = renderDesign(curLayers(clip.src.design), clip.src.design.seed);
+  else if (clip.src.kind === 'gen') b = generate(clip.src.engine, clip.src.params, clip.src.seed);
   else b = await loadAssetBuffer(clip.src.assetId);
   if (srcCache.size > 40) srcCache.delete(srcCache.keys().next().value);
   srcCache.set(k, b);
@@ -1058,7 +1372,7 @@ async function renderAll() {
   const tok = ++renderToken;
   const pending = project.clips.filter((c) => { const r = rendered.get(c.id); return !r || r.key !== fullKey(c); });
   if (!pending.length) return;
-  if (pending.some((c) => c.chain.length || c.src.kind === 'gen')) showStatus('Rendering…', 0);
+  if (pending.some((c) => c.chain.length || c.src.kind !== 'asset')) showStatus('Rendering…', 0);
   for (const c of pending) {
     try { await renderClip(c); c.estDur = clipDur(c); } catch (e) { console.warn(e); }
     if (tok !== renderToken) return;
@@ -1120,7 +1434,6 @@ async function openProject(p) {
   const used = new Set(p.clips.filter((c) => c.src.kind === 'asset').map((c) => c.src.assetId));
   const assets = await idb('assets', 'readonly', (s) => s.index('project').getAllKeys(p.id));
   for (const id of assets) if (!used.has(id)) await idb('assets', 'readwrite', (s) => s.delete(id));
-  cancelGenEdit();
   refreshAll();
   renderAll();
 }
@@ -1291,7 +1604,7 @@ function drawPlayhead(pos) {
   $('timeDisplay').textContent = fmtTime(t);
 }
 tl.addEventListener('scroll', drawRuler);
-window.addEventListener('resize', () => { drawTimeline(); gen.dials && gen.dials.draw(); });
+window.addEventListener('resize', () => { drawTimeline(); redrawDials(); });
 
 /* ---------- Ruler: tap = playhead, drag = selection ---------- */
 (() => {
@@ -1348,7 +1661,6 @@ function bindClip(el) {
 }
 function selectClip(id) {
   selectedId = id;
-  if (gen.editing && gen.editing !== id) cancelGenEdit();
   drawTimeline(); renderTransform();
 }
 function updateClipBar() {
@@ -1356,7 +1668,7 @@ function updateClipBar() {
   $('clipBar').hidden = !c;
   if (!c) return;
   $('clipTitle').textContent = c.name + ' · ' + clipDur(c).toFixed(2) + ' s' + (c.chain.filter((s) => s.on).length ? ' · ' + c.chain.filter((s) => s.on).length + ' effects' : '');
-  $('clipEdit').hidden = c.src.kind !== 'gen';
+  $('clipEdit').hidden = c.src.kind !== 'design';
   const ph = project.playhead;
   $('clipSplit').disabled = !(ph > c.start + 0.01 && ph < c.start + clipDur(c) - 0.01);
   $('clipTrim').disabled = !(selection && selection.b > c.start && selection.a < c.start + clipDur(c));
@@ -1382,7 +1694,7 @@ async function addClipAndAdvance(clip) {
 }
 
 /* ---------- Clip actions ---------- */
-$('clipEdit').addEventListener('click', () => { const c = selClip(); if (c && c.src.kind === 'gen') startGenEdit(c); });
+$('clipEdit').addEventListener('click', () => { const c = selClip(); if (c && c.src.kind === 'design') openWorkshop(deepCopy(c.src.design), c.id); });
 $('clipDel').addEventListener('click', () => {
   const c = selClip(); if (!c) return;
   pushHistory(); project.clips = project.clips.filter((x) => x !== c); selectedId = null; commit(); renderTransform();
@@ -1433,79 +1745,11 @@ let activePanel = 'create';
 function showPanel(name) {
   activePanel = name;
   document.querySelectorAll('#panelTabs .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.panel === name));
-  ['create', 'transform', 'add'].forEach((p) => ($('panel-' + p).hidden = p !== name));
-  if (name === 'create' && gen.dials) gen.dials.draw();
+  ['create', 'transform', 'add', 'library'].forEach((p) => ($('panel-' + p).hidden = p !== name));
   if (name === 'transform') renderTransform();
+  if (name === 'library') renderLibrary();
 }
 $('panelTabs').addEventListener('click', (e) => { const b = e.target.closest('.seg-btn'); if (b) showPanel(b.dataset.panel); });
-
-/* =====================================================================
-   Create (sound generator)
-   ===================================================================== */
-const gen = { theme: 0, preset: 0, engine: null, params: {}, base: {}, seed: 1, dials: null, editing: null };
-function fillThemeSelect() {
-  $('themeSelect').innerHTML = THEMES.map((t, i) => `<option value="${i}">${t.name}</option>`).join('');
-  $('themeSelect').value = gen.theme;
-  fillPresetSelect();
-}
-function fillPresetSelect() {
-  $('presetSelect').innerHTML = THEMES[gen.theme].presets.map((p, i) => `<option value="${i}">${p.name}</option>`).join('');
-  $('presetSelect').value = gen.preset;
-}
-function loadPreset() {
-  const pr = THEMES[gen.theme].presets[gen.preset];
-  gen.engine = pr.engine;
-  gen.base = Object.assign(defaultsOf(ENGINES[pr.engine].params), pr.params);
-  gen.params = { ...gen.base };
-  gen.seed = (Math.random() * 1e9) | 0;
-  buildGenDials();
-}
-function buildGenDials() {
-  const eng = ENGINES[gen.engine];
-  $('presetHint').textContent = eng.desc;
-  const active = gen.dials && gen.dials.defs === eng.params ? gen.dials.active : null;
-  gen.dials = new Dials($('genDials'), eng.params, gen.params, { defaults: gen.base, onCommit: () => { if (settings.autoPreview) previewGen(); } });
-  if (active) gen.dials.setActive(active);
-}
-function previewGen() {
-  try { playBuf(generate(gen.engine, gen.params, gen.seed)); } catch (e) { console.error(e); showStatus('Could not create this sound'); }
-}
-function presetName() { return THEMES[gen.theme].presets[gen.preset].name; }
-$('themeSelect').addEventListener('change', () => { gen.theme = +$('themeSelect').value; gen.preset = 0; fillPresetSelect(); loadPreset(); if (settings.autoPreview) previewGen(); });
-$('presetSelect').addEventListener('change', () => { gen.preset = +$('presetSelect').value; loadPreset(); if (settings.autoPreview) previewGen(); });
-$('genPlay').addEventListener('click', previewGen);
-$('genVary').addEventListener('click', () => {
-  const rnd = Math.random;
-  ENGINES[gen.engine].params.forEach((d) => {
-    if (d.opts || d.k === 'length') return;
-    gen.params[d.k] = fromN(d, clamp(toN(d, gen.base[d.k]) + (rnd() - 0.5) * 0.3, 0, 1));
-  });
-  if (gen.base.length != null) { const d = ENGINES[gen.engine].params.find((x) => x.k === 'length'); gen.params.length = fromN(d, clamp(toN(d, gen.base.length) + (rnd() - 0.5) * 0.1, 0, 1)); }
-  gen.seed = (Math.random() * 1e9) | 0;
-  gen.dials.update(); previewGen();
-});
-$('genAdd').addEventListener('click', () => {
-  addClipAndAdvance({ name: presetName(), src: { kind: 'gen', engine: gen.engine, params: { ...gen.params }, seed: gen.seed } });
-});
-function startGenEdit(c) {
-  gen.editing = c.id; gen.engine = c.src.engine;
-  gen.base = Object.assign(defaultsOf(ENGINES[c.src.engine].params), c.src.params);
-  gen.params = { ...gen.base }; gen.seed = c.src.seed;
-  // try to show the theme/preset the clip came from
-  THEMES.forEach((t, ti) => t.presets.forEach((p, pi) => { if (p.name === c.name && p.engine === c.src.engine) { gen.theme = ti; gen.preset = pi; } }));
-  fillThemeSelect(); buildGenDials();
-  $('genEditBanner').hidden = false; $('genEditName').textContent = c.name; $('genAdd').hidden = true;
-  showPanel('create'); $('panel-create').scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-function cancelGenEdit() { gen.editing = null; $('genEditBanner').hidden = true; $('genAdd').hidden = false; }
-$('genEditCancel').addEventListener('click', cancelGenEdit);
-$('genUpdate').addEventListener('click', () => {
-  const c = getClip(gen.editing); if (!c) return cancelGenEdit();
-  pushHistory();
-  c.src = { kind: 'gen', engine: gen.engine, params: { ...gen.params }, seed: gen.seed };
-  if (c.trim.b != null) c.trim = { a: 0, b: null };
-  cancelGenEdit(); commit(); showStatus('Clip updated');
-});
 
 /* =====================================================================
    Magic Transform (effect chain of the selected clip)
@@ -1719,6 +1963,279 @@ $('recStop').addEventListener('click', () => rec && rec.mr.stop());
 $('recCancel').addEventListener('click', () => { if (rec) { rec.cancel = true; rec.mr.stop(); } });
 
 /* =====================================================================
+   Create tab: browse presets, quick preview / vary / add
+   ===================================================================== */
+const gen = { theme: 0, preset: 0, design: null, base: null };
+function fillThemeSelect() {
+  $('themeSelect').innerHTML = THEMES.map((t, i) => `<option value="${i}">${t.name}</option>`).join('');
+  $('themeSelect').value = gen.theme;
+  fillPresetSelect();
+}
+function fillPresetSelect() {
+  $('presetSelect').innerHTML = THEMES[gen.theme].presets.map((p, i) => `<option value="${i}">${p.name}</option>`).join('');
+  $('presetSelect').value = gen.preset;
+}
+function loadPreset() {
+  const pr = THEMES[gen.theme].presets[gen.preset];
+  gen.base = withIds(deepCopy(pr.layers));
+  gen.design = newDesign(pr.name, deepCopy(gen.base));
+  $('presetHint').textContent = pr.layers.length + (pr.layers.length === 1 ? ' layer: ' : ' layers: ') + designSummary(pr.layers);
+}
+function withIds(layers) { layers.forEach((l) => (l.id ||= uid())); return layers; }
+let lastRender = { key: '', buf: null };
+function renderDesignCached(layers, seed, only = -1) {
+  const key = seed + ':' + only + ':' + JSON.stringify(layers);
+  if (lastRender.key !== key) lastRender = { key, buf: renderDesign(layers, seed, only) };
+  return lastRender.buf;
+}
+function previewDesign(d, only = -1) {
+  try { playBuf(renderDesignCached(curLayers(d), d.seed, only)); } catch (e) { console.error(e); showStatus('Could not create this sound'); }
+}
+// Nudge every continuous control a little (timing stays as it is)
+function varyLayers(layers, base, amount) {
+  layers.forEach((L, i) => {
+    const B = (base && base[i]) || L;
+    SECTIONS.forEach((s) => s.defs(L).forEach((d) => {
+      if (d.opts || d.k === 'delay' || d.k === 'dur' || d.k === 'attack' || d.k === 'crush') return;
+      L[d.k] = fromN(d, clamp(toN(d, B[d.k] ?? d.d) + (Math.random() - 0.5) * amount, 0, 1));
+    }));
+  });
+}
+$('themeSelect').addEventListener('change', () => { gen.theme = +$('themeSelect').value; gen.preset = 0; fillPresetSelect(); loadPreset(); if (settings.autoPreview) previewDesign(gen.design); });
+$('presetSelect').addEventListener('change', () => { gen.preset = +$('presetSelect').value; loadPreset(); if (settings.autoPreview) previewDesign(gen.design); });
+$('genPlay').addEventListener('click', () => previewDesign(gen.design));
+$('genVary').addEventListener('click', () => {
+  gen.design.variants[0] = deepCopy(gen.base); varyLayers(gen.design.variants[0], gen.base, 0.25);
+  gen.design.seed = (Math.random() * 1e9) | 0; previewDesign(gen.design);
+});
+$('genAdd').addEventListener('click', () => addClipAndAdvance({ name: gen.design.name, src: { kind: 'design', design: deepCopy(gen.design) } }));
+$('openWorkshop').addEventListener('click', () => openWorkshop(deepCopy(gen.design), null));
+
+/* =====================================================================
+   Sound Workshop — full-screen editor with layers, variants and its
+   own undo/redo. Opens for new sounds or for a clip on the track.
+   ===================================================================== */
+const ws = { design: null, clipId: null, undo: [], redo: [], dirty: false, openLayers: new Set(), openSecs: new Set(), dials: [] };
+const wsLayers = () => curLayers(ws.design);
+function fillWsStart() {
+  let h = '<option value="">Load a preset…</option><option value="empty">Empty (one layer)</option>';
+  THEMES.forEach((t, ti) => { h += `<optgroup label="${t.name}">` + t.presets.map((p, pi) => `<option value="${ti}:${pi}">${p.name}</option>`).join('') + '</optgroup>'; });
+  $('wsStart').innerHTML = h;
+}
+function openWorkshop(design, clipId) {
+  stopPlayback();
+  ws.design = design; ws.clipId = clipId; ws.undo = []; ws.redo = []; ws.dirty = false;
+  ws.design.variants.forEach(withIds);
+  ws.openLayers = new Set([wsLayers()[0]?.id]); ws.openSecs = new Set();
+  $('wsUse').textContent = clipId ? 'Update clip' : 'Add to track';
+  $('workshop').hidden = false; document.body.classList.add('ws-open');
+  $('workshop').scrollTop = 0;
+  renderWorkshop();
+}
+function closeWorkshop(force) {
+  if (!force && ws.dirty && !confirm('Close the Sound Workshop and discard your changes?')) return;
+  stopPlayback(); $('workshop').hidden = true; document.body.classList.remove('ws-open'); ws.dials = [];
+}
+function wsSnap() { return JSON.stringify(ws.design); }
+function wsPush(snap) {
+  ws.undo.push(snap || wsSnap()); while (ws.undo.length > settings.undo) ws.undo.shift();
+  ws.redo = []; ws.dirty = true; wsUndoButtons();
+}
+function wsUndoButtons() { $('wsUndo').disabled = !ws.undo.length; $('wsRedo').disabled = !ws.redo.length; }
+function wsRestore(s) { ws.design = JSON.parse(s); ws.dirty = true; renderWorkshop(); if (settings.autoPreview) previewDesign(ws.design); }
+$('wsUndo').addEventListener('click', () => { if (!ws.undo.length) return; ws.redo.push(wsSnap()); wsRestore(ws.undo.pop()); });
+$('wsRedo').addEventListener('click', () => { if (!ws.redo.length) return; ws.undo.push(wsSnap()); wsRestore(ws.redo.pop()); });
+$('wsClose').addEventListener('click', () => closeWorkshop());
+
+function renderWorkshop() {
+  const d = ws.design;
+  $('wsName').value = d.name;
+  // variants
+  const vc = $('wsVariants'); vc.innerHTML = '';
+  d.variants.forEach((v, i) => {
+    const b = document.createElement('button'); b.className = 'chip' + (i === d.active ? ' own' : ''); b.textContent = String.fromCharCode(65 + i);
+    if (i === d.active && d.variants.length > 1) {
+      const x = document.createElement('span'); x.className = 'x'; x.textContent = '✕'; b.appendChild(x);
+      x.addEventListener('click', (e) => { e.stopPropagation(); wsPush(); d.variants.splice(i, 1); d.active = Math.max(0, i - 1); renderWorkshop(); });
+    }
+    b.addEventListener('click', () => { if (i === d.active) { previewDesign(d); return; } d.active = i; ws.openLayers = new Set([wsLayers()[0]?.id]); renderWorkshop(); previewDesign(d); });
+    vc.appendChild(b);
+  });
+  if (d.variants.length < 8) {
+    const add = document.createElement('button'); add.className = 'chip'; add.textContent = '＋ Copy as new variant';
+    add.addEventListener('click', () => { wsPush(); d.variants.push(withIds(deepCopy(wsLayers()).map((l) => ({ ...l, id: uid() })))); d.active = d.variants.length - 1; renderWorkshop(); showStatus('Variant ' + String.fromCharCode(65 + d.active) + ' created — change it and compare'); });
+    vc.appendChild(add);
+  }
+  // layers
+  const box = $('wsLayers'); box.innerHTML = ''; ws.dials = [];
+  wsLayers().forEach((L, li) => box.appendChild(layerCard(L, li)));
+  $('wsAddLayer').disabled = wsLayers().length >= MAX_LAYERS;
+  $('wsAddLayer').textContent = wsLayers().length >= MAX_LAYERS ? 'Maximum of ' + MAX_LAYERS + ' layers reached' : '＋ Add layer';
+  wsUndoButtons(); drawWsWave();
+}
+function layerCard(L, li) {
+  const el = document.createElement('div'); el.className = 'layer' + (L.on ? '' : ' off');
+  const open = ws.openLayers.has(L.id);
+  el.innerHTML = `<div class="layer-head"><input type="checkbox" ${L.on ? 'checked' : ''} title="Layer on / off">
+    <div class="title"><b>Layer ${li + 1} ${open ? '▾' : '▸'}</b><small></small></div>
+    <button data-a="solo" title="Play only this layer">▶</button><button data-a="dup" title="Duplicate layer">⧉</button><button data-a="del" title="Remove layer">✕</button></div>`;
+  el.querySelector('small').textContent = layerSummary(L);
+  el.querySelector('input').addEventListener('change', (e) => { wsPush(); L.on = e.target.checked; renderWorkshop(); if (settings.autoPreview) previewDesign(ws.design); });
+  el.querySelector('.title').addEventListener('click', () => { open ? ws.openLayers.delete(L.id) : ws.openLayers.add(L.id); renderWorkshop(); });
+  el.querySelectorAll('.layer-head button').forEach((b) => b.addEventListener('click', () => {
+    const a = b.dataset.a, layers = wsLayers();
+    if (a === 'solo') return previewDesign(ws.design, li);
+    if (a === 'dup') { if (layers.length >= MAX_LAYERS) return showStatus('Maximum of ' + MAX_LAYERS + ' layers'); wsPush(); const c = { ...deepCopy(L), id: uid() }; layers.splice(li + 1, 0, c); ws.openLayers.add(c.id); }
+    if (a === 'del') { if (layers.length <= 1) return showStatus('A sound needs at least one layer'); wsPush(); layers.splice(li, 1); }
+    renderWorkshop(); if (settings.autoPreview) previewDesign(ws.design);
+  }));
+  if (!open) return el;
+  const body = document.createElement('div'); body.className = 'layer-body';
+  SECTIONS.forEach((sec) => {
+    const defs = sec.defs(L);
+    const key = L.id + ':' + sec.id, isOpen = ws.openSecs.has(key) || (sec.open && !ws.openSecs.has('x' + key));
+    const s = document.createElement('div'); s.className = 'sec' + (isOpen ? ' open' : '');
+    const h = document.createElement('button'); h.className = 'sec-head'; h.type = 'button';
+    h.innerHTML = `<span>${sec.name}</span><small></small><i>${isOpen ? '▾' : '▸'}</i>`;
+    h.querySelector('small').textContent = secSummary(sec.id, L);
+    h.addEventListener('click', () => {
+      if (isOpen) { ws.openSecs.delete(key); ws.openSecs.add('x' + key); } else { ws.openSecs.add(key); ws.openSecs.delete('x' + key); }
+      renderWorkshop();
+    });
+    s.appendChild(h);
+    if (isOpen) {
+      const dc = document.createElement('div'); dc.className = 'sec-body'; s.appendChild(dc);
+      if (!defs.length) dc.innerHTML = '<p class="hint">Noise has no pitch — shape it with Brightness instead.</p>';
+      else {
+        let snap = null;
+        const dl = new Dials(dc, defs, L, {
+          defaults: layerDefaults(L.type),
+          onInput: () => { if (!snap) snap = wsSnap(); h.querySelector('small').textContent = secSummary(sec.id, L); },
+          onCommit: (k) => {
+            wsPush(snap || wsSnap()); snap = null;
+            if (k === 'type' || k === 'mode') renderWorkshop(); else { el.querySelector('.layer-head small').textContent = layerSummary(L); drawWsWave(); }
+            if (settings.autoPreview) previewDesign(ws.design);
+          },
+        });
+        ws.dials.push(dl);
+      }
+    }
+    body.appendChild(s);
+  });
+  el.appendChild(body);
+  return el;
+}
+function secSummary(id, L) {
+  const f = (k, u) => fmtVal({ u }, L[k]);
+  switch (id) {
+    case 'source': return L.type === T_NOTES || L.type === T_NOISE ? layerSummary(L) : SRC_TYPES[L.type];
+    case 'pitch': return L.type === T_NOISE ? '—' : L.type === T_NOTES ? f('note', 'note') + (L.glide ? ' · glide ' + f('glide', 'st') : '') : f('f0', 'Hz') + ' → ' + f('f1', 'Hz') + ' Hz';
+    case 'volume': return (L.delay ? 'at ' + f('delay', 's') + ' · ' : '') + f('dur', 's') + ' · fade ' + L.decay + '%';
+    case 'bright': return L.ftype === 0 && L.b0 >= 17000 && L.b1 >= 17000 ? 'open' : ['LP', 'HP', 'BP'][L.ftype] + ' ' + f('b0', 'Hz') + ' → ' + f('b1', 'Hz');
+    case 'move': return [L.vib ? 'vibrato' : '', L.pulse ? 'pulse' : '', L.pan0 !== L.pan1 ? 'moves' : '', L.width ? 'wide' : ''].filter(Boolean).join(' · ') || 'still';
+    case 'char': return [L.drive ? 'drive ' + L.drive + '%' : '', L.crush < 16 ? L.crush + ' bit' : ''].filter(Boolean).join(' · ') || 'clean';
+  }
+  return '';
+}
+function drawWsWave() {
+  if (!ws.design) return;
+  const cv = $('wsWave'), W = cv.clientWidth || 300;
+  let b; try { b = renderDesignCached(wsLayers(), ws.design.seed); } catch (e) { return; }
+  drawWave(cv, b, W, 70);
+  $('wsInfo').textContent = 'Length ' + (bufLen(b) / SR).toFixed(2) + ' s · ' + wsLayers().filter((l) => l.on).length + ' of ' + wsLayers().length + ' layers on';
+}
+function redrawDials() { ws.dials.forEach((d) => d.draw()); if (trDials) trDials.draw(); }
+
+$('wsName').addEventListener('change', () => { wsPush(); ws.design.name = $('wsName').value.trim() || 'Sound'; });
+$('wsStart').addEventListener('change', (e) => {
+  const v = e.target.value; e.target.value = ''; if (!v) return;
+  wsPush();
+  let layers, name;
+  if (v === 'empty') { layers = [layerDefaults(T_SINE)]; name = 'My sound'; }
+  else { const [ti, pi] = v.split(':').map(Number), pr = THEMES[ti].presets[pi]; layers = deepCopy(pr.layers); name = pr.name; }
+  ws.design.variants[ws.design.active] = withIds(layers.map((l) => ({ ...l, id: uid() })));
+  if (ws.design.variants.length === 1) ws.design.name = name;
+  ws.openLayers = new Set([wsLayers()[0].id]);
+  renderWorkshop(); if (settings.autoPreview) previewDesign(ws.design);
+});
+$('wsPlay').addEventListener('click', () => previewDesign(ws.design));
+$('wsVary').addEventListener('click', () => { wsPush(); varyLayers(wsLayers(), null, 0.12); ws.design.seed = (Math.random() * 1e9) | 0; renderWorkshop(); previewDesign(ws.design); });
+$('wsAddLayer').addEventListener('click', () => {
+  if (wsLayers().length >= MAX_LAYERS) return;
+  wsPush(); const L = { ...layerDefaults(T_SINE), id: uid(), level: 60 }; wsLayers().push(L); ws.openLayers.add(L.id); renderWorkshop();
+});
+$('wsUse').addEventListener('click', async () => {
+  ws.design.name = $('wsName').value.trim() || ws.design.name;
+  const design = deepCopy(ws.design);
+  if (ws.clipId && getClip(ws.clipId)) {
+    const c = getClip(ws.clipId); pushHistory();
+    c.src = { kind: 'design', design }; c.name = design.name; c.trim = { a: 0, b: null };
+    closeWorkshop(true); commit(); showStatus('Clip updated');
+  } else {
+    closeWorkshop(true); await addClipAndAdvance({ name: design.name, src: { kind: 'design', design } }); showStatus('Added to the track');
+  }
+});
+$('wsSave').addEventListener('click', async () => {
+  const name = await askText('Save to My Sounds', $('wsName').value.trim() || ws.design.name); if (!name) return;
+  const design = deepCopy(ws.design); design.name = name;
+  await libPut({ name, src: { kind: 'design', design }, chain: [], trim: { a: 0, b: null } });
+  ws.dirty = false; showStatus('Saved to My Sounds');
+});
+
+/* =====================================================================
+   My Sounds — a library shared by all projects
+   ===================================================================== */
+const libBuffers = new Map();
+async function libPut(item) { item.id ||= uid(); item.created ||= Date.now(); await idb('library', 'readwrite', (s) => s.put(item)); return item; }
+async function renderLibItem(item) {
+  let src;
+  if (item.blob) { src = libBuffers.get(item.id) || await decodeBlob(item.blob); libBuffers.set(item.id, src); }
+  else if (item.src.kind === 'design') src = renderDesign(curLayers(item.src.design), item.src.design.seed);
+  else src = generate(item.src.engine, item.src.params, item.src.seed);
+  let b = item.chain && item.chain.some((s) => s.on) ? await applyChain(src, item.chain) : src;
+  if (item.trim && (item.trim.a || item.trim.b != null)) b = sliceBuf(b, item.trim.a || 0, item.trim.b ?? bufLen(b) / SR);
+  return b;
+}
+async function renderLibrary() {
+  const list = (await idb('library', 'readonly', (s) => s.getAll())).sort((a, b) => b.created - a.created);
+  const el = $('libList'); el.innerHTML = '';
+  if (!list.length) { el.innerHTML = '<p class="hint">Nothing saved yet.</p>'; return; }
+  list.forEach((it) => {
+    const row = document.createElement('div'); row.className = 'proj';
+    row.innerHTML = '<button data-a="play" title="Play">▶</button><div class="info"><b></b><small></small></div><button data-a="add">＋ Track</button><button data-a="ren">Rename</button><button data-a="del">✕</button>';
+    row.querySelector('b').textContent = it.name;
+    const kind = it.blob ? 'Audio' : it.src.kind === 'design' ? 'Workshop sound · ' + curLayers(it.src.design).length + ' layers' : 'Generated (v0.1)';
+    row.querySelector('small').textContent = kind + (it.chain && it.chain.length ? ' · ' + it.chain.length + ' effects' : '') + ' · ' + new Date(it.created).toLocaleDateString();
+    row.querySelectorAll('button').forEach((b) => b.addEventListener('click', async () => {
+      const a = b.dataset.a;
+      if (a === 'play') { try { playBuf(await renderLibItem(it)); } catch (e) { showStatus('Could not play this sound'); } }
+      if (a === 'add') {
+        const chain = (it.chain || []).map((s) => ({ ...deepCopy(s), id: uid() }));
+        let src;
+        if (it.blob) src = { kind: 'asset', assetId: await storeAsset(it.blob, it.name) };
+        else src = deepCopy(it.src);
+        await addClipAndAdvance({ name: it.name, src, chain, trim: deepCopy(it.trim || { a: 0, b: null }) });
+        showStatus('Added "' + it.name + '"');
+      }
+      if (a === 'ren') { const n = await askText('Rename', it.name); if (!n) return; it.name = n; await libPut(it); renderLibrary(); }
+      if (a === 'del') { if (!confirm(`Delete "${it.name}" from My Sounds?`)) return; await idb('library', 'readwrite', (s) => s.delete(it.id)); libBuffers.delete(it.id); renderLibrary(); }
+    }));
+    el.appendChild(row);
+  });
+}
+$('clipSave').addEventListener('click', async () => {
+  const c = selClip(); if (!c) return;
+  const name = await askText('Save to My Sounds', c.name); if (!name) return;
+  const item = { name, chain: deepCopy(c.chain), trim: deepCopy(c.trim) };
+  if (c.src.kind === 'asset') {
+    let meta = assetMeta.get(c.src.assetId) || await idb('assets', 'readonly', (s) => s.get(c.src.assetId));
+    if (!meta) return showStatus('Audio not found');
+    item.blob = meta.blob;
+  } else item.src = deepCopy(c.src);
+  await libPut(item); showStatus('Saved to My Sounds');
+});
+
+/* =====================================================================
    Export
    ===================================================================== */
 const hasLame = () => typeof window.lamejs !== 'undefined' && !window.__noLame;
@@ -1831,7 +2348,7 @@ function setTheme(t) {
   document.documentElement.dataset.theme = t; localStorage.setItem('listen-theme', t);
   $('themeItem').textContent = t === 'dark' ? 'Light mode' : 'Dark mode';
   document.querySelector('meta[name=theme-color]').content = t === 'dark' ? '#131313' : '#f4f4f2';
-  if (project) drawTimeline(); if (gen.dials) gen.dials.draw(); if (trDials) trDials.draw();
+  if (project) drawTimeline(); redrawDials(); if (!$('workshop').hidden) drawWsWave();
 }
 function toggleTheme() { setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'); }
 $('fullscreenBtn').addEventListener('click', () => {
@@ -1896,6 +2413,15 @@ function refreshAll() {
 
 /* ---------- Keyboard (desktop) ---------- */
 document.addEventListener('keydown', (e) => {
+  if (!$('workshop').hidden) { // Sound Workshop has its own shortcuts
+    if (e.target.matches('input, select, textarea') || [...document.querySelectorAll('.modal-bg')].some((m) => !m.hidden)) return;
+    const m = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
+    if (e.code === 'Space') { e.preventDefault(); previewDesign(ws.design); }
+    else if (m && k === 'z' && !e.shiftKey) { e.preventDefault(); $('wsUndo').click(); }
+    else if (m && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); $('wsRedo').click(); }
+    else if (e.key === 'Escape') closeWorkshop();
+    return;
+  }
   if (e.target.matches('input, select, textarea') || [...document.querySelectorAll('.modal-bg')].some((m) => !m.hidden)) return;
   const mod = e.ctrlKey || e.metaKey;
   if (e.code === 'Space') { e.preventDefault(); playTimeline(); }
@@ -1926,7 +2452,7 @@ async function receiveShared() {
   $('versionFooter').textContent = $('versionAbout').textContent = APP_VERSION;
   setTheme(localStorage.getItem('listen-theme') || 'dark');
   $('forcePick').checked = settings.forcePick; updatePickHint();
-  fillThemeSelect(); loadPreset();
+  fillThemeSelect(); loadPreset(); fillWsStart();
   try { await openDB(); } catch (e) { alert('This browser does not allow storage — projects cannot be saved.'); return; }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   const lastId = localStorage.getItem('listen-project');

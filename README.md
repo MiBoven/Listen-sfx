@@ -8,21 +8,29 @@ Listen is a browser app for making cinematic sound effects fast, without digging
 
 ## Features
 
-### Create — sound generator
-- **Themes**: Standard, Sci-Fi, Fantasy, RPG, Horror and Retro (8-Bit). Each theme has its own list of fitting sounds, e.g. Sci-Fi → *Laser shot, Shield up, Generator shutdown, Teleport, Spaceship fly-by*.
-- Picking a sound moves all controls to matching values. Eight synthesis engines are behind the presets:
-  - **8-Bit**: chip oscillator with slides, jumps and repeats
-  - **Impact**: noise blast, low thump, debris and rumble
-  - **Power**: motors, generators and risers sweeping up or down, with rotor wobble and a mechanical clunk
-  - **Whoosh**: air moving past, including left → right movement and Doppler
-  - **Zap**: FM lasers, blasters and teleports
-  - **Sparkle**: glittering bell tones (fairy dust, spells, treasure)
-  - **Goosebumps**: swelling choir, strings or glass chords with shimmer
-  - **Drone**: dark living textures and metal scrapes
-- **Infinity dials**: every setting is a round button that shows its value. Tap one, then swipe the tick ruler below it left or right (like a phone photo editor). A short note under the ruler explains what that setting does to the sound. Double-tap a button to reset it to the preset value. A dot on the ruler marks the preset value.
-- **🎲 Vary** creates a new variation around the chosen preset with one tap.
-- Sounds play automatically after a change (can be switched off in Settings).
-- Generated clips stay editable: **Edit sound** reloads their settings into the generator.
+### Create — presets
+- **Themes**: Standard, Sci-Fi, Fantasy, RPG, Horror and Retro (8-Bit), each with 8 fitting sounds, e.g. Sci-Fi → *Laser shot, Shield up, Generator shutdown, Teleport, Spaceship fly-by*.
+- Preview a sound, make a quick **🎲 Vary** version, add it to the track, or open it in the **Sound Workshop** to see exactly how it is built.
+
+### Sound Workshop
+- A full-screen editor for building sounds step by step, with its **own undo/redo**.
+- Every sound is made of **1–4 layers** that play together. Every layer has the **same sections with the same controls**, so a sound can always be understood and rebuilt:
+  - **Source**: the raw material, either Sine, Triangle, Saw, Square, **Noise** (bright, medium, dark) or **Notes**. Notes come with an instrument (E-piano, Bell, Pluck, Organ, Pad, Chip), a play mode (single note, chord, arpeggio, random notes) and a mood (Major, Minor, Pentatonic, Dreamy, Mysterious, Dark, Power).
+  - **Pitch**: start pitch → end pitch with a curve (for Notes: root note and glide)
+  - **Volume**: level, start time, fade in, length, fade out
+  - **Brightness**: low-, high- or band-pass filter, start → end with a curve, resonance
+  - **Movement**: vibrato, pulse, pan start → pan end, stereo width
+  - **Character**: drive and bit depth
+- Source and Pitch are open by default; the other sections are collapsed and show a one-line summary.
+- Example: *Big explosion* = bright noise getting darker (the blast) + a sine dropping from 150 to 45 Hz (the punch) + dark noise fading in (the rumble).
+- ▶ on a layer plays only that layer; switching layers off lets you hear what each one adds. Layers can be duplicated and removed.
+- **Variants**: copy the sound as variant B, C … change it and tap the letters to compare.
+- **Infinity dials**: every setting is a round button that shows its value. Tap one, then swipe the tick ruler below it (like a phone photo editor). A short note explains what the setting does. Double-tap a button to reset it.
+- Start from any preset or from an empty layer. **Add to track**, or **Update clip** when the Workshop was opened from a clip (*Edit in Workshop*).
+
+### My Sounds
+- A library shared by **all projects**: save sounds from the Workshop or any clip (*Save to My Sounds*, effect chain and trim included).
+- Play, add to the track, rename or delete saved sounds.
 
 ### Magic Transform — effect chains
 - **Recipes** apply a whole effect chain with one tap: *Monster, Giant step, Cinema hit, Explosion punch, Sci-fi door, Sword clang, Robot, Ghost, Space echo, Underwater, Radio, Pixie*.
@@ -39,7 +47,7 @@ Listen is a browser app for making cinematic sound effects fast, without digging
 
 ### Track & export
 - One audio track: clips can be placed freely, overlap (they are mixed), and snap to other clips, the playhead and 0.
-- Tap a clip to select it, then drag it to move it. Clip actions: **Edit sound** (generated clips), **Split** at the playhead, **Trim to selection**, **Duplicate**, **Delete**.
+- Tap a clip to select it, then drag it to move it. Clip actions: **Edit in Workshop** (Workshop sounds), **Split** at the playhead, **Trim to selection**, **Duplicate**, **Save to My Sounds**, **Delete**.
 - Tap the ruler to place the playhead; drag along the ruler to select a range. Play, back to start, loop, and zoom (−, fit, +).
 - **Export** everything, the current selection, or the selected clip as **MP3** (320/192/128 kbps) or **WAV** (16/24-bit), in stereo or mono, with optional normalization (peak −1 dB). Exports can be downloaded or shared via the share sheet.
 - **Undo/redo** (default 20 steps, adjustable 5–100 in Settings). Desktop shortcuts: Space = play/pause, Ctrl/Cmd+Z / Ctrl+Y = undo/redo, Delete = delete clip.
@@ -56,7 +64,15 @@ Listen is a browser app for making cinematic sound effects fast, without digging
 
 ## How it works
 
-All sounds are synthesized sample by sample in plain JavaScript at 48 kHz, using oscillators, filtered noise, FM and additive bell partials. No sample files are bundled. Each engine draws from a seeded random generator, so a clip stores only its *recipe* (engine, parameters, seed). This keeps projects tiny and lets every sound be edited again later. Effect chains are re-rendered from the original source whenever a step changes, and rendered results are cached. Pitch and Stretch use a WSOLA time-stretcher. Reverb runs through a generated impulse response in an `OfflineAudioContext`. Imported and recorded audio is decoded with `decodeAudioData` and stored as a blob in IndexedDB (recordings and trimmed or video sources as WAV). Projects (JSON) are stored there as well. WAV encoding is built in, and MP3 encoding uses the vendored [lamejs](https://github.com/zhuker/lamejs).
+All sounds are synthesized sample by sample in plain JavaScript at 48 kHz, and no sample files are bundled. Each Workshop layer runs the same pipeline:
+
+source (oscillator / noise / instrument notes) → pitch curve and vibrato → state-variable filter → envelope and pulse → drive and bit reduction → panning
+
+The layers are then mixed and normalized. The instruments are synthesized: E-piano as 2-operator FM, Bell as inharmonic partials, Pluck as a Karplus-Strong string, Organ as drawbar harmonics, Pad as detuned saws, Chip as a square wave. Each layer uses a seeded random generator, so a clip stores only its *recipe* (layers, variants, seed). This keeps projects tiny and lets every sound be reopened in the Workshop later.
+
+Effect chains are re-rendered from the original source whenever a step changes, and rendered results are cached. Pitch and Stretch use a WSOLA time-stretcher. Reverb runs through a generated impulse response in an `OfflineAudioContext`. Imported and recorded audio is decoded with `decodeAudioData` and stored as a blob in IndexedDB (recordings and trimmed or video sources as WAV). Projects and *My Sounds* are stored there as well. WAV encoding is built in, and MP3 encoding uses the vendored [lamejs](https://github.com/zhuker/lamejs).
+
+Clips made with the generator of v0.1.0 keep playing. They are still rendered by the old engines but can no longer be opened for editing.
 
 ## Files
 

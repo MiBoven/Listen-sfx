@@ -1,5 +1,5 @@
 // Listen service worker — offline support (stale-while-revalidate) and Web Share Target.
-const CACHE = 'listen-v0.1.0';
+const CACHE = 'listen-v0.2.0';
 const CORE = ['/', '/index.html', '/style.css', '/app.js', '/site.webmanifest', '/favicon.ico',
   '/android-chrome-192x192.png', '/android-chrome-512x512.png', '/icons/favicon-32x32.png', '/icons/favicon-16x16.png', '/icons/apple-touch-icon.png'];
 

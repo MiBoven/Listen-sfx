@@ -82,10 +82,11 @@
   <div class="clip-bar" id="clipBar" hidden>
     <span class="clip-title" id="clipTitle"></span>
     <div class="clip-actions">
-      <button id="clipEdit">Edit sound</button>
+      <button id="clipEdit">Edit in Workshop</button>
       <button id="clipSplit">Split</button>
       <button id="clipTrim">Trim to selection</button>
       <button id="clipDup">Duplicate</button>
+      <button id="clipSave">Save to My Sounds</button>
       <button id="clipDel" class="danger">Delete</button>
     </div>
   </div>
@@ -97,6 +98,7 @@
   <button class="seg-btn active" data-panel="create">Create</button>
   <button class="seg-btn" data-panel="transform">Magic Transform</button>
   <button class="seg-btn" data-panel="add">Add audio</button>
+  <button class="seg-btn" data-panel="library">My Sounds</button>
 </div>
 
 <!-- Create -->
@@ -110,19 +112,13 @@
     <select id="presetSelect"></select>
   </div>
   <p class="hint" id="presetHint"></p>
-  <div class="dials" id="genDials"></div>
   <div class="btn-row">
     <button id="genPlay">▶ Preview</button>
     <button id="genVary" title="Make a new variation">🎲 Vary</button>
     <button class="primary" id="genAdd">＋ Add to track</button>
   </div>
-  <div class="edit-banner" id="genEditBanner" hidden>
-    Editing clip <strong id="genEditName"></strong>
-    <div class="btn-row">
-      <button class="primary" id="genUpdate">Update clip</button>
-      <button id="genEditCancel">Cancel</button>
-    </div>
-  </div>
+  <button class="wide" id="openWorkshop">🎛 Open in Sound Workshop</button>
+  <p class="hint">See exactly how this sound is built from layers, change it step by step — or start from scratch.</p>
 </section>
 
 <!-- Transform -->
@@ -162,6 +158,40 @@
   <button class="primary wide rec" id="recBtn">● Record with microphone</button>
   <p class="hint">Knock, clap, scrape, whistle — then turn it into something big with Magic Transform.</p>
 </section>
+
+<!-- My Sounds -->
+<section class="card panel" id="panel-library" hidden>
+  <p class="hint">Your own sounds — available in every project. Save them from the Sound Workshop or from any clip with “Save to My Sounds”.</p>
+  <div id="libList"></div>
+</section>
+
+<!-- Sound Workshop (full screen) -->
+<div class="workshop" id="workshop" hidden>
+  <div class="ws-inner">
+    <div class="ws-top">
+      <button class="icon" id="wsClose" title="Close" aria-label="Close">✕</button>
+      <h2>Sound Workshop</h2>
+      <button class="icon sm" id="wsUndo" title="Undo" aria-label="Undo">↶</button>
+      <button class="icon sm" id="wsRedo" title="Redo" aria-label="Redo">↷</button>
+    </div>
+    <div class="card">
+      <div class="row"><label class="label-main" for="wsName">Name</label><input type="text" id="wsName"></div>
+      <div class="row"><label class="label-main" for="wsStart">Start</label><select id="wsStart"></select></div>
+      <div class="label-main ws-label">Variants <span class="muted">— copy the sound, change the copy, tap A / B to compare</span></div>
+      <div class="chips" id="wsVariants"></div>
+      <canvas id="wsWave" class="ws-wave" height="70"></canvas>
+      <p class="hint" id="wsInfo"></p>
+      <div class="btn-row"><button class="primary" id="wsPlay">▶ Play</button><button id="wsVary">🎲 Vary</button></div>
+    </div>
+    <p class="hint">A sound is made of up to 4 layers that play together. Every layer has the same sections: <b>Source</b> (raw material) → <b>Pitch</b> → <b>Volume</b> (when and how long) → <b>Brightness</b> (filter) → <b>Movement</b> → <b>Character</b>. Switch layers off or tap ▶ on a layer to hear what each one adds.</p>
+    <div id="wsLayers"></div>
+    <button class="wide" id="wsAddLayer">＋ Add layer</button>
+    <div class="btn-row ws-actions">
+      <button id="wsSave">Save to My Sounds</button>
+      <button class="primary" id="wsUse">Add to track</button>
+    </div>
+  </div>
+</div>
 
 <p class="status" id="status" hidden></p>
 

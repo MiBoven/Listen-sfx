@@ -117,7 +117,7 @@ button.link { background: none; border: none; color: var(--accent); font-size: 1
 }
 .segment button {
   flex: 1; background: none; border: none; color: var(--text-secondary);
-  padding: 9px 6px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer;
+  padding: 9px 4px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer;
 }
 .segment button.active { background: var(--accent); color: var(--accent-text); }
 .segment button:disabled { opacity: .35; }
@@ -209,6 +209,32 @@ html:not([data-theme="dark"]) .tl-selection { background: rgba(0,0,0,.08); }
 .step-head button { background: none; border: none; color: var(--text-secondary); font-size: 16px; cursor: pointer; padding: 4px 6px; }
 .step-body { padding: 0 8px 10px; }
 .edit-banner { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); font-size: 13px; }
+
+/* ---------- Sound Workshop ---------- */
+.workshop { position: fixed; inset: 0; z-index: 35; background: var(--bg); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+body.ws-open { overflow: hidden; }
+.ws-inner { max-width: 720px; margin: 0 auto; padding: 12px 16px 40px; }
+.ws-top { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; position: sticky; top: 0; background: var(--bg); padding: 4px 0; z-index: 2; }
+.ws-top h2 { flex: 1; font-size: 17px; margin: 0; }
+.ws-label { margin-top: 12px; }
+.ws-wave { width: 100%; height: 70px; display: block; background: var(--surface-2); border-radius: 8px; }
+.ws-actions { position: sticky; bottom: 0; background: var(--bg); padding: 10px 0 4px; }
+.layer { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); margin-bottom: 10px; }
+.layer.off { opacity: .55; }
+.layer-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; }
+.layer-head .title { flex: 1; min-width: 0; cursor: pointer; }
+.layer-head .title b { font-size: 14px; display: block; }
+.layer-head .title small { font-size: 12px; color: var(--text-secondary); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.layer-head button { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: 7px; width: 32px; height: 32px; cursor: pointer; flex-shrink: 0; }
+.layer-body { padding: 0 10px 10px; }
+.sec { border-top: 1px solid var(--border); }
+.sec-head { width: 100%; display: flex; align-items: center; gap: 8px; background: none; border: none; color: var(--text); padding: 10px 2px; cursor: pointer; text-align: left; }
+.sec-head span { font-weight: 600; font-size: 13.5px; min-width: 84px; }
+.sec-head small { flex: 1; font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sec-head i { font-style: normal; color: var(--text-secondary); }
+.sec-body { padding-bottom: 8px; }
+.sec-body .dials, .sec-body .dial-row { margin-top: 0; }
+.proj button[data-a="play"] { width: 34px; }
 
 /* ---------- Add audio ---------- */
 .drop {
