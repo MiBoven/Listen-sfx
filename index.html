@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#131313">
+<meta name="description" content="Listen – With G you get some fairy glisten. Create cinematic sound effects in your browser.">
+<meta property="og:title" content="Listen">
+<meta property="og:description" content="With G you get some fairy glisten">
+<meta property="og:image" content="https://listen.michels.world/icons/og-image.png">
+<meta property="og:url" content="https://listen.michels.world/">
+<meta property="og:type" content="website">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Listen">
+<link rel="icon" href="/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="stylesheet" href="style.css">
+<title>Listen</title>
+</head>
+<body>
+
+<header>
+  <div class="brand" id="brand" role="button" tabindex="0" title="Home">
+    <img src="/android-chrome-192x192.png" alt="" class="logo">
+    <div>
+      <h1>Listen</h1>
+      <p class="subtitle">With G you get some fairy glisten</p>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="icon" id="fullscreenBtn" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+    <div class="menu-wrap">
+      <button class="icon" id="menuBtn" title="Menu" aria-label="Menu">⋮</button>
+      <div class="dropdown" id="menu" style="display:none">
+        <button data-act="projects">Projects…</button>
+        <button data-act="theme" id="themeItem">Light mode</button>
+        <button data-act="settings">Settings</button>
+        <button data-act="about">About</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- Project bar -->
+<div class="project-bar">
+  <button class="project-name" id="projectName" title="Rename project">Untitled</button>
+  <span class="save-state" id="saveState"></span>
+  <button class="icon sm" id="undoBtn" title="Undo" aria-label="Undo">↶</button>
+  <button class="icon sm" id="redoBtn" title="Redo" aria-label="Redo">↷</button>
+</div>
+
+<!-- Timeline -->
+<section class="card timeline-card">
+  <div class="timeline" id="timeline">
+    <div class="tl-inner" id="tlInner">
+      <canvas class="tl-ruler" id="tlRuler" height="24"></canvas>
+      <div class="tl-track" id="tlTrack"></div>
+      <div class="tl-selection" id="tlSelection" hidden></div>
+      <div class="tl-playhead" id="tlPlayhead"></div>
+    </div>
+  </div>
+  <p class="tl-hint" id="tlHint">Tap the ruler to move the playhead · drag along the ruler to select a range · tap a clip to select it, then drag to move it</p>
+  <div class="transport">
+    <button class="icon accent" id="playBtn" title="Play / pause" aria-label="Play">▶</button>
+    <button class="icon" id="stopBtn" title="Back to start" aria-label="Stop">■</button>
+    <button class="icon" id="loopBtn" title="Loop" aria-label="Loop">⟲</button>
+    <span class="time" id="timeDisplay">0:00.00</span>
+    <span class="spacer"></span>
+    <button class="icon sm" id="zoomOutBtn" title="Zoom out">−</button>
+    <button class="icon sm" id="zoomFitBtn" title="Fit">↔</button>
+    <button class="icon sm" id="zoomInBtn" title="Zoom in">+</button>
+  </div>
+  <div class="sel-info" id="selInfo" hidden>
+    <span id="selText"></span>
+    <button class="link" id="selClear">Clear selection</button>
+  </div>
+  <div class="clip-bar" id="clipBar" hidden>
+    <span class="clip-title" id="clipTitle"></span>
+    <div class="clip-actions">
+      <button id="clipEdit">Edit sound</button>
+      <button id="clipSplit">Split</button>
+      <button id="clipTrim">Trim to selection</button>
+      <button id="clipDup">Duplicate</button>
+      <button id="clipDel" class="danger">Delete</button>
+    </div>
+  </div>
+  <button class="primary wide" id="exportBtn">Export…</button>
+</section>
+
+<!-- Panels -->
+<div class="segment" id="panelTabs">
+  <button class="seg-btn active" data-panel="create">Create</button>
+  <button class="seg-btn" data-panel="transform">Magic Transform</button>
+  <button class="seg-btn" data-panel="add">Add audio</button>
+</div>
+
+<!-- Create -->
+<section class="card panel" id="panel-create">
+  <div class="row">
+    <label class="label-main" for="themeSelect">Theme</label>
+    <select id="themeSelect"></select>
+  </div>
+  <div class="row">
+    <label class="label-main" for="presetSelect">Sound</label>
+    <select id="presetSelect"></select>
+  </div>
+  <p class="hint" id="presetHint"></p>
+  <div class="dials" id="genDials"></div>
+  <div class="btn-row">
+    <button id="genPlay">▶ Preview</button>
+    <button id="genVary" title="Make a new variation">🎲 Vary</button>
+    <button class="primary" id="genAdd">＋ Add to track</button>
+  </div>
+  <div class="edit-banner" id="genEditBanner" hidden>
+    Editing clip <strong id="genEditName"></strong>
+    <div class="btn-row">
+      <button class="primary" id="genUpdate">Update clip</button>
+      <button id="genEditCancel">Cancel</button>
+    </div>
+  </div>
+</section>
+
+<!-- Transform -->
+<section class="card panel" id="panel-transform" hidden>
+  <p class="hint" id="trNoClip">Select a clip on the track first. Its effect chain shows up here.</p>
+  <div id="trBody" hidden>
+    <div class="label-main">Recipes <span class="muted">— one tap applies a whole effect chain</span></div>
+    <div class="chips" id="recipeChips"></div>
+    <div class="chain-head">
+      <span class="label-main">Effect chain of <span id="trClipName"></span></span>
+      <button class="link" id="chainClear">Clear</button>
+    </div>
+    <p class="hint">Applied top to bottom. The original sound always stays untouched — switch steps off to compare.</p>
+    <div id="chainList"></div>
+    <div class="row">
+      <select id="addEffectSelect"><option value="">＋ Add effect…</option></select>
+    </div>
+    <div class="btn-row">
+      <button id="chainPlay">▶ Play clip</button>
+      <button id="chainBypass">A/B: original</button>
+      <button id="recipeSave">Save as recipe</button>
+    </div>
+  </div>
+</section>
+
+<!-- Add audio -->
+<section class="card panel" id="panel-add" hidden>
+  <div class="drop" id="drop">
+    <p><strong>Tap to choose an audio or video file</strong><br>or drag and drop it here — from videos only the sound is used</p>
+    <input type="file" id="fileInput" accept="audio/*,video/*">
+  </div>
+  <div class="toggle-row">
+    <label for="forcePick">Always pick a section first</label>
+    <input type="checkbox" id="forcePick">
+  </div>
+  <p class="hint" id="pickHint"></p>
+  <button class="primary wide rec" id="recBtn">● Record with microphone</button>
+  <p class="hint">Knock, clap, scrape, whistle — then turn it into something big with Magic Transform.</p>
+</section>
+
+<p class="status" id="status" hidden></p>
+
+<footer>Listen · v<span id="versionFooter"></span></footer>
+
+<!-- ===== Modals ===== -->
+<div class="modal-bg" id="projectsModal" hidden>
+  <div class="modal">
+    <h2>Projects</h2>
+    <p class="hint" id="storageInfo"></p>
+    <div id="projectList"></div>
+    <div class="btn-row">
+      <button class="primary" id="projNew">＋ New project</button>
+    </div>
+    <button class="close" data-close>Close</button>
+  </div>
+</div>
+
+<div class="modal-bg" id="settingsModal" hidden>
+  <div class="modal">
+    <h2>Settings</h2>
+    <div class="set-row"><label for="setUndo">Undo steps</label><input type="number" id="setUndo" min="5" max="100" step="1"></div>
+    <div class="set-row"><label for="setPick">Ask for a section on files longer than (minutes, 0 = always)</label><input type="number" id="setPick" min="0" max="120" step="1"></div>
+    <div class="set-row"><label for="setAuto">Play a sound automatically after changing it</label><input type="checkbox" id="setAuto"></div>
+    <div class="set-row"><label for="setMicNs">Browser noise suppression while recording</label><input type="checkbox" id="setMicNs"></div>
+    <p class="hint">Off gives you the raw sound (best for effects). On cleans up background noise but can swallow quiet knocks.</p>
+    <button class="close" data-close>Close</button>
+  </div>
+</div>
+
+<div class="modal-bg" id="aboutModal" hidden>
+  <div class="modal">
+    <h2>About Listen</h2>
+    <p>Listen creates cinematic sound effects right in your browser — from 8-bit blips to explosions, generator shutdowns, sweeping whooshes and goosebump choirs. Record your own sounds and transform them with one tap.</p>
+    <p class="hint">Everything is synthesized and processed on your device. No audio is uploaded, there is no tracking and no cookies; projects are stored only in this browser's storage.</p>
+    <p class="hint">Version <span id="versionAbout"></span></p>
+    <button class="close" data-close>Close</button>
+  </div>
+</div>
+
+<div class="modal-bg" id="exportModal" hidden>
+  <div class="modal">
+    <h2>Export</h2>
+    <div class="label-main">What</div>
+    <div class="segment" id="exRange">
+      <button class="seg-btn active" data-v="all">Everything</button>
+      <button class="seg-btn" data-v="sel">Selection</button>
+      <button class="seg-btn" data-v="clip">Selected clip</button>
+    </div>
+    <div class="row"><label class="label-main" for="exFormat">Format</label>
+      <select id="exFormat">
+        <option value="mp3-320">MP3 · 320 kbps</option>
+        <option value="mp3-192">MP3 · 192 kbps</option>
+        <option value="mp3-128">MP3 · 128 kbps</option>
+        <option value="wav16">WAV · 16-bit</option>
+        <option value="wav24">WAV · 24-bit</option>
+      </select>
+    </div>
+    <p class="hint" id="exMp3Hint" hidden>MP3 needs the encoder file <code>vendor/lamejs/lame.min.js</code>, which isn't installed yet — see the README. WAV works without it.</p>
+    <div class="row"><label class="label-main" for="exChannels">Channels</label>
+      <select id="exChannels"><option value="2">Stereo</option><option value="1">Mono</option></select>
+    </div>
+    <div class="toggle-row"><label for="exNorm">Normalize loudness (peak −1 dB)</label><input type="checkbox" id="exNorm" checked></div>
+    <div class="row"><label class="label-main" for="exName">Name</label><input type="text" id="exName"></div>
+    <p class="hint" id="exInfo"></p>
+    <div class="btn-row">
+      <button class="primary" id="exGo">Download</button>
+      <button id="exShare">Share</button>
+    </div>
+    <button class="close" data-close>Close</button>
+  </div>
+</div>
+
+<div class="modal-bg" id="pickModal" hidden>
+  <div class="modal">
+    <h2>Pick a section</h2>
+    <p class="hint" id="pickInfo"></p>
+    <canvas id="pickWave" class="pick-wave" height="90"></canvas>
+    <div class="row"><label for="pickStart">Start</label><input type="range" id="pickStart" min="0" max="1000" value="0"><span class="qty-val" id="pickStartVal"></span></div>
+    <div class="row"><label for="pickEnd">End</label><input type="range" id="pickEnd" min="0" max="1000" value="1000"><span class="qty-val" id="pickEndVal"></span></div>
+    <div class="btn-row">
+      <button id="pickPlay">▶ Listen</button>
+      <button class="primary" id="pickUse">Use section</button>
+    </div>
+    <button class="close" id="pickAll">Use the whole file</button>
+    <button class="close" id="pickCancel">Cancel</button>
+  </div>
+</div>
+
+<div class="modal-bg" id="recModal" hidden>
+  <div class="modal">
+    <h2>Recording</h2>
+    <div class="rec-time" id="recTime">0:00.0</div>
+    <div class="meter"><div id="recMeter"></div></div>
+    <div class="btn-row">
+      <button class="primary" id="recStop">■ Stop &amp; use</button>
+      <button id="recCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="textModal" hidden>
+  <div class="modal">
+    <h2 id="textTitle"></h2>
+    <input type="text" id="textInput">
+    <div class="btn-row">
+      <button class="primary" id="textOk">OK</button>
+      <button id="textCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="vendor/lamejs/lame.min.js" onerror="window.__noLame=true"></script>
+<script src="app.js"></script>
+</body>
+</html>
