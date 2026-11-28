@@ -1,38 +1,175 @@
 # Changelog
 
-### 0.3.0 — 2026-11-26 — Workshop controls, notes & playback
-- Choices are now buttons; numbers use round knobs with a vertical jog wheel beside them (also in Magic Transform)
-- Level and Length are always visible under each layer head; the other volume settings stay collapsible
-- Each layer shows its wave with a playhead; tap it to switch between "layer only" and "in the mix"
-- Mix wave with a positionable playhead, play/pause, stop and a pin to keep it at the top
-- Layer ▶ turns into ■ while playing
-- Autoplay with three modes (Off / Layer / Mix), default Off, switchable in the Workshop
-- Pick your own notes for Notes layers: piano keyboard, 6-string fretboard or text (note names, octaves and chord names, incl. German H/Fis/Es)
-- Create tab: "New sound" starts with a single sine layer, "Edit in Workshop" opens the selected preset
-- Fixed: knob values were drawn above the sticky Workshop buttons
-- Fixed: knobs with negative values (e.g. Pan) showed a wrong, half-filled ring
+### 1.14.0 — 2026-11-28 — Saved sessions, ZIP names, GPS check
+- Added **Saved sessions**: the last 3 working sessions (all settings, the original images, and per-image rotation / custom names / watermark switch) are stored automatically in this browser (IndexedDB) and listed in a collapsed area above the drop zone. Each session can be restored (replaces the current list) or deleted; "Delete all" clears everything. Nothing is uploaded; if the browser storage is full, the oldest session is dropped first
+- ZIP downloads are now named `jpg75_YYYYMMDD-hhmmss.zip` (local time), for both the JPG ZIP and the PNG/WebP export ZIP
+- ZIP creation no longer needs the JSZip library (previously loaded from a CDN): a small built-in ZIP writer produces standard ZIP files, so "Download all as ZIP" and the export ZIP also work offline
+- GPS: EXIF reading is more robust (scans a larger header, skips non-Exif APP1 segments such as XMP, no longer depends on the reported MIME type). Each image's expanded panel now shows whether the original contained a GPS location – Android often removes it before the browser sees the file (photo picker / drag from the gallery); picking via "Dateien" from the file's folder may keep it
 
-### 0.2.0 — 2026-11-26 — Sound Workshop
-- New full-screen Sound Workshop with its own undo/redo: every sound is built from 1–4 layers with identical sections (Source, Pitch, Volume, Brightness, Movement, Character)
-- Sources: Sine, Triangle, Saw, Square, Noise (bright/medium/dark) and Notes with six synthesized instruments (E-piano, Bell, Pluck, Organ, Pad, Chip), four play modes and seven moods
-- Variants (A, B, C …) to compare ideas side by side; solo and mute per layer; duplicate and remove layers
-- Source and Pitch open by default, other sections collapsed with a summary line
-- All 48 presets rebuilt from layers, so they can be opened and rebuilt step by step; the crackling explosion was replaced
-- Clips from the Workshop can be reopened via "Edit in Workshop" and updated
-- My Sounds: a library shared by all projects, filled from the Workshop or from any clip (effects and trim included)
-- Create tab simplified to preset browsing with Preview, Vary, Add to track and Open in Sound Workshop
-- Fixed: ruler of the dials could be drawn squashed
-- Clips made with the v0.1.0 generator still play but can't be edited anymore
+### 1.13.0 — 2026-11-05 — Compare: auto-align & two-file picker
+- Compare: new **Auto-align B to A** option (shift and scale, on by default) and **Position tolerance** slider (0–5 px), so slightly shifted, rescaled or re-rendered images are no longer reported as almost entirely different; the result shows the applied shift/scale and the compared area
+- Compare: **"Choose 2 images at once"** button (multi-select or drop two files; sorted by name); single slots can still be replaced individually
+- Compare: the swipe viewer shows B in its aligned position
 
-### 0.1.0 — 2026-11-26 — First release
-- Sound generator with six themes (Standard, Sci-Fi, Fantasy, RPG, Horror, Retro) and 48 presets built on eight synthesis engines (8-Bit, Impact, Power, Whoosh, Zap, Sparkle, Goosebumps, Drone)
-- Infinity dials: round value buttons plus a swipeable tick ruler with an explanation of what each setting does; double-tap resets to the preset value
-- 🎲 Vary for instant variations, and optional auto-play after every change
-- Magic Transform: 12 one-tap recipes, a visible step-by-step effect chain (on/off, edit, reorder, remove), 18 effects and your own saved recipes
-- Import of audio and video files (sound only) via picker, drag & drop or Android share target, with a section picker for long files (threshold adjustable)
-- Microphone recording with level meter
-- One track with free clip placement, snapping, split, trim to selection, duplicate and delete; playhead, range selection, loop and zoom
-- Export of everything, the selection or a single clip as MP3 (via vendored lamejs) or WAV 16/24-bit, stereo or mono, with optional normalization; download or share
-- Projects with autosave, project list (open, rename, duplicate, delete) and storage info
-- Undo/redo with 20 steps by default (adjustable in Settings)
-- Dark mode by default, installable PWA with offline support
+### 1.12.0 — 2026-11-04 — Compare images (experimental)
+- Added an experimental **Compare** dialog (⋮ menu): file checksums (SHA-256/SHA-1/SHA-512), pixel hash, expected-hash check, pixel-difference overlay with tolerance and region boxes, JPEG segment and EXIF tag differences, perceptual similarity, A/B swipe slider, estimated JPEG quality
+- The image list now shows a hint when two original files are byte-identical
+
+### 1.11.1 — 2026-10-05 — Fix sideways thumbnails in file managers
+- Fixed converted photos showing a sideways preview thumbnail in file managers such as Windows Explorer while opening correctly: the copied EXIF block still contained the original's embedded thumbnail (in sensor orientation) but its orientation tag had been reset. That embedded thumbnail is now unlinked, so previews are generated from the converted image itself
+- The pixel dimensions recorded in the EXIF are now updated to the output size, instead of keeping the original's after a resize or rotation
+- Images converted with an earlier version keep the old thumbnail and need to be converted again to benefit from this
+
+### 1.11.0 — 2026-10-05 — Watermark
+- Added an optional **Watermark** card under Rename files: load a PNG, SVG, or WebP (drag & drop or file selection) and apply it to every image with adjustable opacity, saturation, edge softness, size (percent of the image's shorter side, or pixels), a 3×3 position grid, and margin (percent or pixels)
+- The watermark is drawn last, once, at its final pixel size onto the finished full-resolution image, so the photo is never resampled again and SVGs stay perfectly sharp; saturation and softness are computed in JS rather than via `ctx.filter`, which Safari lacks
+- Live mini-preview in the card, plus a hint when a PNG would have to be enlarged
+- The watermark file is remembered between visits (locally, via IndexedDB) with a remove button; its settings persist like the other cards
+- Per-image **Watermark on this image** switch in the expanded item panel; **Reset all** resets the watermark settings (the loaded file stays) and re-enables it on every image
+
+### 1.10.1 — 2026-09-18 — Modal close button always visible, original-toggle position
+- The About and Naming pattern modals now have an × in the top-right corner too (not just the bottom Close button), and both stay fixed in place while only the middle content scrolls — so the close controls are always visible, even on a long modal on a short screen
+- Moved the **Show original** button from the bottom-right to the top-right of the expanded image, with the "Original" badge moved to the top-left so they don't overlap
+
+### 1.10.0 — 2026-09-18 — Show original, filename sanitizing, UI polish
+- Added a **Show original** button in the expanded item view (bottom-right of the image) to compare against the untouched source file, with an "Original" badge while active
+- Renamed filenames are now sanitized to characters valid on Windows/macOS/Linux (`< > : " / \ | ? *` and trailing dots/spaces are stripped), for both the global Rename pattern and per-image custom names
+- Per-image rename: clearing the name field back to empty now auto-unchecks "keep this name" again (it auto-checks while typing, as before)
+- Reordered the Resize mode buttons to Preset / Pixel / Percent
+- Border fill (White/Anthracite/Blurred) is now only shown when "Fit (fill border)" is selected — not for Zoom (crop), where it has no effect
+
+### 1.9.0 — 2026-09-18 — $R/$P/$S placeholders, per-image placeholders, resolution in list
+- Added three rename placeholders: `$R` (saved resolution, e.g. `1920x1080`), `$P` (resize scale — exact % in Percent mode, otherwise an approximate % from the actual pixel change), and `$S` (resize preset name, e.g. `FullHD`)
+- Renamed the **Clear all** button to **Remove all** — it only removes the file list, none of the app's settings
+- Per-image renaming now supports the same placeholders as the global Rename pattern (except `#`, which has no meaning for a single image), with its own **i** info button for the placeholder legend; typing a custom name now auto-checks "keep this name"
+- The list now shows each image's current (possibly resized) resolution alongside its file size
+
+### 1.8.3 — 2026-09-18 — Auto-oriented print presets, fixed Pixel field styling
+- Photo print presets (e.g. 9×13 cm) now auto-orient to match the image — a landscape photo gets a landscape-oriented print size instead of staying portrait. Fixed video/screen and social media presets keep their deliberate orientation
+- Fixed the Pixel mode's width/height fields overflowing narrow screens and looking inconsistent with the rest of the app — they now share the same dark styling and can shrink to fit, like the Percent field
+
+### 1.8.2 — 2026-09-18 — Fix DPI dropdown overflow, ratio after rotation
+- Fixed the DPI dropdown (Preset mode) overflowing off-screen on narrow viewports — `<select>` elements now properly shrink to fit their row instead of forcing it wider
+- Fixed aspect-ratio presets (e.g. 16:9) flipping to the wrong orientation (e.g. 9:16) after rotating an image — rotation is now applied to the source *before* the resize/ratio math runs, so the chosen ratio always stays correct regardless of rotation
+
+### 1.8.1 — 2026-09-18 — Image always full width (height adapts)
+- The expanded item image now always spans full width — for portrait images (or a landscape photo rotated 90°), the panel's height adapts to the image instead of the image being squeezed into a fixed-height box with bars on the sides
+
+### 1.8.0 — 2026-09-18 — Full-width item image, dark mode in menu, app.js
+- Fixed the expanded item image not actually filling the width — a more general `.item img` rule (sized for the small list thumbnail) was overriding it. Now uses an explicit width **and** height (not just a max-height), so it always spans the full width and never needs scrolling, including right after a rotation flips it between landscape and portrait
+- Moved the Dark mode toggle out of the header into the ⋮-menu (alongside Export and About), matching the other apps in the suite; it now shows as a "Dark mode" / "Light mode" menu item reflecting the action it performs
+- Split the JavaScript out of `index.html` into its own `app.js` file — `index.html` is markup only now
+
+### 1.7.1 — 2026-09-18 — Full icon set, PWA manifest
+- Added the correctly-themed logo/favicon set (replacing a placeholder set that turned out to belong to a different app): `favicon.ico`, `favicon.webp`, `favicon-16x16.png`, `favicon-32x32.png`, `apple-touch-icon.png`, `android-chrome-192x192.png`, `android-chrome-512x512.png`, and `logo.png`
+- Added `site.webmanifest` (named "JPG75 is Enough" / "JPG75") and linked it from `index.html`, so "Add to Home Screen" on Android gets a proper app icon and name instead of a generic one
+
+### 1.7.0 — 2026-09-17 — Inline item panel, live resize preview, DPI choice
+- Replaced the modal-based enlarged preview with an **inline expandable panel** per list item — tapping an item expands it in place (no popup, no scrolling needed to see the whole image); opening another item closes the previous one
+- That panel now also has **Rotate**, **Rename** (with an optional lock so "Rename files" never overwrites that image's name), and **Reset** (clears the custom name and rotation for just that image) actions
+- Resize's Percent slider now moves in **5% steps**, with a precise number field alongside it for exact in-between values
+- Added a **DPI** dropdown (72/150/300/600, default 300) for the Preset mode's photo-print sizes, instead of a fixed 300 DPI
+- When every loaded image shares one resolution (or only one is loaded), that size is now shown live and used to preview the resulting pixel size for Percent, Pixel (as field placeholders, with live width/height sync when the ratio is locked), and Preset modes
+- **Reset all** now also clears every image's custom name/lock, not just its rotation
+
+### 1.6.0 — 2026-09-07 — Resize presets (photo prints, ratios, social media)
+- Added a third Resize mode, **Preset**, alongside Percent and Pixel:
+  - Photo print sizes in cm (9×13 through 20×30, plus DIN A4), converted to pixels at 300 DPI
+  - Pure aspect ratios (1:1, 3:4, 4:3, 9:16, 16:9) with no fixed size — the target box is computed from each image's own resolution, cropped to the largest inscribed box of that ratio, or fitted into the smallest box that fully contains it, depending on the Zoom/Fit choice
+  - Fixed video/screen sizes (HD, Full HD, UHD/4K) and common social media formats (Instagram Post/Portrait/Story, Facebook/LinkedIn Post)
+  - Reuses the same Zoom (crop) / Fit (white, anthracite, or blurred border) controls already used by the Pixel mode
+
+### 1.5.0 — 2026-09-07 — Resize, rotate, and reset all
+- Added a **Resize images** card between Quality and Rename files: percent scaling (10–300%) or exact pixel dimensions, with a "Keep aspect ratio" toggle; when it's off and a fixed box doesn't match the source ratio, choose to crop-to-fill or fit-with-border (white, anthracite, or a blurred copy of the image as the border fill)
+- Added per-image **rotation**: tap a thumbnail to enlarge it, then tap the enlarged image to rotate 90° (confirmed with a toast notification)
+- Added a **Reset all** button next to Clear all: resets every setting (Quality, Resize, Rename, Export, and each image's rotation) to default, without removing the uploaded images themselves
+- Refactored the image pipeline: resize, rotation, JPEG encoding, and EXIF re-insertion now share one function, always re-decoding from the original file rather than compounding loss on a previous JPG output — used for the initial conversion, live re-encodes, and rotation alike
+- The list thumbnail is now generated from the same (resized/rotated) output as the actual file, so it stays visually in sync
+- Fixed a memory-leak edge case: removing an image after it had been re-encoded (via Quality/Resize/Rotate changes) previously revoked its original, already-stale blob URL instead of the current one
+
+### 1.4.0 — 2026-09-07 — Paste images from clipboard
+- Images can now be pasted directly from the clipboard — e.g. a Windows screenshot copied via Snipping Tool, or an Android screenshot's "Copy to clipboard" share option — and are processed exactly like a normal file selection
+- **Desktop:** Ctrl+V / Cmd+V anywhere on the page, plus a short hint below the picker (hidden on touch devices)
+- **Mobile:** a dedicated "Paste image from clipboard" button, since there's no keyboard shortcut equivalent — uses the async Clipboard API, which requires the tap as an explicit permission gesture
+
+### 1.3.0 — 2026-09-06 — Export moved to menu, settings persistence, enlarge preview
+- The **Export** section is no longer always visible — it now opens via the ⋮-menu ("Export"), appears under "Rename files" as before, and can be closed again with an × in its top-right corner
+- The three settings cards (Quality, Rename files, Export) now have distinct HTML ids, making them easier to reference individually
+- Removed the "(optional)" label next to "Export as other format"
+- Renamed the export tagline to "JPG is not always enough!"
+- WebP export no longer has its own quality slider — it now reuses the main Quality slider
+- Tolerance default changed from 0% to 15%
+- Quality, export transparent color, and export tolerance are now saved in `localStorage` and restored on reload; clicking a setting's label resets it to default, with a small **•** marker shown when a value differs from default
+- Clicking a thumbnail in the list now opens an enlarged preview, making it easier to pick a transparency color from the image
+
+### 1.2.0 — 2026-09-06 — Explanatory intro text, home reload, PNG/WebP export
+- Added a short intro paragraph explaining what the app does, since the subtitle in the header is now just a tagline
+- Clicking the logo/title in the header now reloads the page (triggering the unsaved-progress warning if applicable), instead of just scrolling to the top
+- Added an optional **Export as other format** section: re-packages the already-processed JPG output as **PNG** (with simple color-key transparency: pick a color + tolerance) or **WebP** (own quality slider) — kept separate from the main "Save"/"Download all" flow, which always stays JPG
+
+### 1.1.1 — 2026-09-06 — Logo in header, shorter subtitle
+- Added the app logo next to the title in the header; clicking the logo/title scrolls back to the top, matching the "brand as home link" convention used across the app suite
+- Subtitle shortened to "And enough is enough."
+
+### 1.1.0 — 2026-09-06 — Header/menu redesign, orientation fix, live re-encode
+- New header matching the rest of the app suite: brand block top-left, Vollbild (fullscreen) / Darkmode / ⋮-menu icons top-right; the menu currently holds only "About"
+- Fixed photo **orientation** being lost/flipped after conversion: images now decode with `imageOrientation: 'from-image'` for consistent rotation handling, and the copied-back EXIF Orientation tag is reset to "normal" so viewers don't rotate an already-correct image a second time
+- Changing the **quality slider** after images are already converted now re-encodes them in place at the new quality, instead of only affecting images added afterward
+- The **Bilder / Dateien** toggle is now hidden on devices with a precise pointer (desktop mouse/trackpad), since it only addresses an Android touch-picker quirk
+
+### 1.0.12 — 2026-08-08 — Extract CSS into style.css
+- Moved all CSS out of the inline `<style>` block into a separate `style.css` file
+
+### 1.0.11 — 2026-08-08 — Preserve EXIF metadata through conversion
+- EXIF metadata (capture date, camera model, ISO, aperture, GPS, etc.) is now preserved through conversion for JPEG sources that have it — previously `canvas.toBlob()` silently stripped all of it, so converted photos looked like they had no metadata or the wrong date in tools like Google Photos
+
+### 1.0.10 — 2026-08-08 — Limited concurrency, favicon links
+- Images are now processed with limited concurrency (3 at a time) instead of strictly one-by-one, speeding up large batches while staying within safe memory limits
+- Added favicon references (`favicon.ico`, 16×16, 32×32, and an Apple touch icon) to `index.html` — see [Favicon](#favicon) below for what files to add
+
+### 1.0.9 — 2026-08-08 — Fix out-of-memory crash, clear-all, dedupe all
+- Fixed out-of-memory crashes when selecting large batches (e.g. 300 photos): images now decode via `createImageBitmap()` instead of base64 data URLs, and the list shows a small real thumbnail (≤64px) instead of the full-resolution image, cutting per-image memory use from several MB to a few KB
+- Added a **Clear all** button to reset the whole list at once, instead of removing images one by one
+- Added a warning before an accidental reload/navigation discards unsaved progress
+- Duplicate-name numbering now applies to **every** image sharing a name (not just the ones after the first), and uses millisecond-precision EXIF capture time (`SubSecTimeOriginal`) when available so photos taken within the same second still sort correctly
+
+### 1.0.8 — 2026-08-08 — Fix hint spacing, dedupe rename clashes
+- Fixed the "Processing X of Y…" indicator overlapping the download buttons, and added spacing between the buttons and the file list below them
+- Duplicate file names (e.g. from a rename pattern without a `#` counter) are now automatically numbered — `_1`, `_2`, ... — ordered chronologically by capture/file date instead of colliding
+
+### 1.0.7 — 2026-08-07 — Sequential processing, buttons above list
+- Images are now processed **sequentially** instead of all in parallel — fixes freezes/timeouts on Android when selecting many photos at once, caused by decoding and re-encoding several full-resolution images simultaneously
+- A "Processing X of Y…" hint is shown while a batch is being converted
+- Moved the "Download all" and "Download all as ZIP" buttons above the file list instead of below it
+
+### 1.0.6 — 2026-08-01 — Add Bilder/Dateien source toggle
+- Added a **Bilder / Dateien** toggle (default: Bilder) above the picker. "Dateien" switches the file input's `accept` attribute to `*/*`, which makes Android open its regular file browser (Storage Access Framework) instead of the anonymized photo picker — preserving real file names when picked from "Files"/"My Files"
+- Non-image files selected in "Dateien" mode are ignored with a notice, same as before
+
+### 1.0.5 — 2026-08-01 — Presets dropdown, lowercase time placeholders, $Q
+- Renaming now only applies if "Rename files" is checked **and** the pattern field isn't empty; otherwise the original name is kept (as `name.jpg`)
+- Removed the hover/long-press tooltip for the original name — no longer needed given the rule above
+- Rename placeholders `$H`/`$N`/`$S` renamed to `$h`/`$m`/`$s`
+- Added a `$Q` placeholder for the JPEG quality used
+- Added a preset dropdown with ready-made patterns: `DSC_$Y$M$D_$h$m$s`, `S23_$Y$M$D_$h$m$s`, `*_smalled`
+- Example numbers in the app now use `00042` instead of `00032`
+
+### 1.0.4 — 2026-08-01 — Fix tooltip clipping, EXIF/file date for patterns
+- Fixed the original-name tooltip being clipped/truncated by a CSS `overflow: hidden` on the wrong element, which made it display incorrectly
+- Added a native hover tooltip (desktop) via the `title` attribute as a fallback alongside the custom tooltip
+- `$Y` `$M` `$D` `$H` `$N` `$S` in rename patterns now use each photo's EXIF capture date/time when available (JPEGs only), falling back to the file's last-modified date otherwise — instead of always using the current time
+
+### 1.0.3 — 2026-08-01 — Drop folder field, tooltip, live renaming
+- Removed the unused folder name field and `$P` placeholder (no real folder access is possible from a mobile file picker)
+- File list now shows only the new file name; hover (desktop) or long-press (mobile) reveals the original name as a tooltip
+- File names in the list now update live when the rename pattern is changed, without reprocessing the images
+
+### 1.0.2 — 2026-08-01 — Remove images individually, download-all
+- Images can now be removed from the list individually
+- Added a "Download all" button for separate files, in addition to the existing "Download all as ZIP" option
+
+### 1.0.1 — 2026-08-01 — Show original filename in the list
+- Original filename is now shown alongside the converted name in the file list
+
+### 1.0.0 — 2026-08-01 — Initial release
+- Initial release
